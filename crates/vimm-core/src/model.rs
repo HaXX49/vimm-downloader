@@ -266,9 +266,99 @@ pub struct Ratings {
     pub votes: u32,
 }
 
+// ---------------------------------------------------------------------------
+// Convenience methods needed by downstream issues (#3 HTTP, #5 search parser)
+// ---------------------------------------------------------------------------
+
+impl SearchQuery {
+    /// Serialize the query into the `(key, value)` form params vimm.net expects.
+    ///
+    /// Always includes `p=list`. Adds `mode=adv` + empty `system` for
+    /// all-system searches, or `mode=list` + `system={slug}` for per-system.
+    #[must_use]
+    pub fn to_params(&self) -> Vec<(String, String)> {
+        let mut params = vec![
+            ("p".to_string(), "list".to_string()),
+            ("mode".to_string(), self.mode().as_param().to_string()),
+        ];
+
+        match &self.system {
+            None => params.push(("system".to_string(), String::new())),
+            Some(s) if s.eq_ignore_ascii_case("all") => {
+                params.push(("system".to_string(), String::new()));
+            }
+            Some(slug) => params.push(("system".to_string(), slug.clone())),
+        }
+
+        params.push(("q".to_string(), self.q.clone()));
+
+        if let Some((op, val)) = self.players {
+            params.push(("players".to_string(), op.as_param().to_string()));
+            params.push(("playersValue".to_string(), val.to_string()));
+        }
+        if let Some(sim) = self.simultaneous {
+            params.push(("simultaneous".to_string(), sim.to_string()));
+        }
+        if let Some(pub_) = &self.publisher {
+            params.push(("publisher".to_string(), pub_.clone()));
+        }
+        if let Some((op, val)) = self.year {
+            params.push(("year".to_string(), op.as_param().to_string()));
+            params.push(("yearValue".to_string(), val.to_string()));
+        }
+        if let Some((op, val)) = self.rating {
+            params.push(("rating".to_string(), op.as_param().to_string()));
+            params.push(("ratingValue".to_string(), val.to_string()));
+        }
+        if let Some(region) = &self.region {
+            params.push(("region".to_string(), region.clone()));
+        }
+
+        params.push(("sort".to_string(), self.sort.as_param().to_string()));
+        params.push(("sortOrder".to_string(), self.order.as_param().to_string()));
+
+        if let Some(section) = &self.section {
+            params.push(("section".to_string(), section.clone()));
+        }
+
+        params
+    }
+}
+
+impl SearchMode {
+    /// Render as the literal `mode` form param value.
+    #[must_use]
+    pub fn as_param(self) -> &'static str {
+        match self {
+            SearchMode::List => "list",
+            SearchMode::Adv => "adv",
+        }
+    }
+}
+
+impl ExtraFlag {
+    /// Parse a single badge letter (`T/D/P/U/B`) into an [`ExtraFlag`].
+    ///
+    /// Returns `None` for unrecognized letters — the caller decides whether
+    /// to ignore or error.
+    #[must_use]
+    pub fn from_char(c: char) -> Option<Self> {
+        match c.to_ascii_uppercase() {
+            'T' => Some(Self::Translated),
+            'D' => Some(Self::Demo),
+            'P' => Some(Self::Prototype),
+            'U' => Some(Self::Unlicensed),
+            'B' => Some(Self::Bonus),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -- mode() ---------------------------------------------------------------
 
     #[test]
     fn mode_is_adv_when_system_none() {
@@ -294,16 +384,22 @@ mod tests {
         assert_eq!(q.mode(), SearchMode::List);
     }
 
+    // -- as_param() -----------------------------------------------------------
+
     #[test]
     fn op_renders_site_param() {
+        assert_eq!(Op::Gt.as_param(), ">");
         assert_eq!(Op::Ge.as_param(), ">=");
         assert_eq!(Op::Eq.as_param(), "=");
         assert_eq!(Op::Lt.as_param(), "<");
+        assert_eq!(Op::Le.as_param(), "<=");
     }
 
     #[test]
     fn sort_renders_site_param() {
         assert_eq!(Sort::Title.as_param(), "Title");
+        assert_eq!(Sort::Players.as_param(), "Players");
+        assert_eq!(Sort::Year.as_param(), "Year");
         assert_eq!(Sort::Rating.as_param(), "Rating");
     }
 
@@ -311,5 +407,171 @@ mod tests {
     fn order_renders_site_param() {
         assert_eq!(Order::Asc.as_param(), "ASC");
         assert_eq!(Order::Desc.as_param(), "DESC");
+    }
+
+    #[test]
+    fn search_mode_renders_param() {
+        assert_eq!(SearchMode::List.as_param(), "list");
+        assert_eq!(SearchMode::Adv.as_param(), "adv");
+    }
+
+    // -- to_params() ----------------------------------------------------------
+
+    #[test]
+    fn to_params_all_system_includes_mode_adv_and_empty_system() {
+        let q = SearchQuery {
+            q: "armored core".into(),
+            ..Default::default()
+        };
+        let params = q.to_params();
+        assert!(params.contains(&("p".into(), "list".into())));
+        assert!(params.contains(&("mode".into(), "adv".into())));
+        assert!(params.contains(&("system".into(), String::new())));
+        assert!(params.contains(&("q".into(), "armored core".into())));
+    }
+
+    #[test]
+    fn to_params_per_system_includes_mode_list_and_slug() {
+        let q = SearchQuery {
+            system: Some("NES".into()),
+            q: "mario".into(),
+            ..Default::default()
+        };
+        let params = q.to_params();
+        assert!(params.contains(&("mode".into(), "list".into())));
+        assert!(params.contains(&("system".into(), "NES".into())));
+    }
+
+    #[test]
+    fn to_params_includes_optional_filters_when_set() {
+        let q = SearchQuery {
+            system: Some("PS1".into()),
+            q: "final fantasy".into(),
+            players: Some((Op::Ge, 2)),
+            simultaneous: Some(true),
+            publisher: Some("Square".into()),
+            year: Some((Op::Ge, 1997)),
+            rating: Some((Op::Ge, 8)),
+            region: Some("8".into()),
+            sort: Sort::Rating,
+            order: Order::Desc,
+            section: Some("number".into()),
+        };
+        let params = q.to_params();
+        assert!(params.contains(&("players".into(), ">=".into())));
+        assert!(params.contains(&("playersValue".into(), "2".into())));
+        assert!(params.contains(&("simultaneous".into(), "true".into())));
+        assert!(params.contains(&("publisher".into(), "Square".into())));
+        assert!(params.contains(&("year".into(), ">=".into())));
+        assert!(params.contains(&("yearValue".into(), "1997".into())));
+        assert!(params.contains(&("rating".into(), ">=".into())));
+        assert!(params.contains(&("ratingValue".into(), "8".into())));
+        assert!(params.contains(&("region".into(), "8".into())));
+        assert!(params.contains(&("sort".into(), "Rating".into())));
+        assert!(params.contains(&("sortOrder".into(), "DESC".into())));
+        assert!(params.contains(&("section".into(), "number".into())));
+    }
+
+    #[test]
+    fn to_params_omits_optional_filters_when_none() {
+        let q = SearchQuery {
+            system: Some("NES".into()),
+            q: "zelda".into(),
+            ..Default::default()
+        };
+        let params = q.to_params();
+        assert!(!params.iter().any(|(k, _)| k == "players"));
+        assert!(!params.iter().any(|(k, _)| k == "publisher"));
+        assert!(!params.iter().any(|(k, _)| k == "year"));
+        assert!(!params.iter().any(|(k, _)| k == "rating"));
+        assert!(!params.iter().any(|(k, _)| k == "region"));
+        assert!(!params.iter().any(|(k, _)| k == "section"));
+    }
+
+    // -- ExtraFlag::from_char -------------------------------------------------
+
+    #[test]
+    fn extra_flag_from_char_parses_all_valid_letters() {
+        assert_eq!(ExtraFlag::from_char('T'), Some(ExtraFlag::Translated));
+        assert_eq!(ExtraFlag::from_char('D'), Some(ExtraFlag::Demo));
+        assert_eq!(ExtraFlag::from_char('P'), Some(ExtraFlag::Prototype));
+        assert_eq!(ExtraFlag::from_char('U'), Some(ExtraFlag::Unlicensed));
+        assert_eq!(ExtraFlag::from_char('B'), Some(ExtraFlag::Bonus));
+    }
+
+    #[test]
+    fn extra_flag_from_char_is_case_insensitive() {
+        assert_eq!(ExtraFlag::from_char('t'), Some(ExtraFlag::Translated));
+        assert_eq!(ExtraFlag::from_char('d'), Some(ExtraFlag::Demo));
+    }
+
+    #[test]
+    fn extra_flag_from_char_returns_none_for_unknown() {
+        assert_eq!(ExtraFlag::from_char('X'), None);
+        assert_eq!(ExtraFlag::from_char('1'), None);
+        assert_eq!(ExtraFlag::from_char(' '), None);
+    }
+
+    // -- serde round-trip -----------------------------------------------------
+
+    #[test]
+    fn system_serializes_and_deserializes() {
+        let s = System {
+            slug: "X360-D".into(),
+            name: "Xbox 360 (Digital)".into(),
+            launch_year: 2005,
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        let back: System = serde_json::from_str(&json).unwrap();
+        assert_eq!(s, back);
+    }
+
+    #[test]
+    fn game_summary_with_optional_rating_serializes() {
+        let g = GameSummary {
+            id: 834,
+            title: "Super Mario Bros.".into(),
+            system: "NES".into(),
+            regions: vec!["World".into()],
+            version: "1.0".into(),
+            languages: vec![],
+            extras: vec![ExtraFlag::Translated],
+            rating: Some(8.85),
+        };
+        let json = serde_json::to_string(&g).unwrap();
+        let back: GameSummary = serde_json::from_str(&json).unwrap();
+        assert_eq!(g, back);
+    }
+
+    #[test]
+    fn game_summary_with_null_rating_serializes() {
+        let g = GameSummary {
+            id: 51455,
+            title: "Armored Core".into(),
+            system: "PS1".into(),
+            regions: vec!["Japan".into()],
+            version: "1.1".into(),
+            languages: vec![],
+            extras: vec![],
+            rating: None,
+        };
+        let json = serde_json::to_string(&g).unwrap();
+        assert!(json.contains("\"rating\":null"));
+        let back: GameSummary = serde_json::from_str(&json).unwrap();
+        assert_eq!(g, back);
+    }
+
+    #[test]
+    fn format_serializes_with_all_fields() {
+        let f = Format {
+            key: "ciso".into(),
+            label: ".ciso".into(),
+            description: "Works on hardware and emulators (Dolphin)".into(),
+            alt: 0,
+            zipped_size_bytes: 961_898,
+        };
+        let json = serde_json::to_string(&f).unwrap();
+        let back: Format = serde_json::from_str(&json).unwrap();
+        assert_eq!(f, back);
     }
 }
