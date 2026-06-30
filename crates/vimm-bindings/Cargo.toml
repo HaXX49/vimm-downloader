@@ -1,0 +1,15 @@
+[package]
+name = "vimm-bindings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "UniFFI facade exposing vimm-core to Swift/Kotlin/Python (v2)"
+
+[lib]
+crate-type = ["rlib", "staticlib", "cdylib"]
+
+[dependencies]
+vimm-core = { workspace = true }

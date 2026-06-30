@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vimm-core",
+    "crates/vimm-cli",
+    "crates/vimm-bindings",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+repository = "https://github.com/HaXX49/vimm-downloader"
+authors = ["HaXX49"]
+
+[workspace.dependencies]
+# HTTP / async
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "gzip", "stream"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util"] }
+url = "2"
+# Parsing
+scraper = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+regex = "1"
+# Archive
+sevenz-rust2 = "0.13"
+zip = "2"
+# CLI
+clap = { version = "4", features = ["derive"] }
+indicatif = "0.17"
+# Config
+toml = "0.8"
+dirs = "5"
+# Errors
+thiserror = "1"
+anyhow = "1"
+# Internal
+vimm-core = { path = "crates/vimm-core" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
