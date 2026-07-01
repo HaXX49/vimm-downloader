@@ -8,10 +8,11 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::doc_markdown)]
 
+pub mod client;
 pub mod error;
 pub mod model;
-pub mod client;
 
+pub use client::{ClientConfig, StreamingResponse, VimmClient};
 pub use error::VimmError;
 pub use model::{
     ExtraFlag, Format, GameDetail, GameSummary, Media, Op, Order, Ratings, SearchMode, SearchQuery,

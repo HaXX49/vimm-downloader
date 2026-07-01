@@ -219,9 +219,9 @@ impl VimmClient {
     async fn enforce_rate_limit(&self) {
         let mut guard = self.last_request.lock().await;
         if let Some(last) = *guard {
-            let elapsed = last.elapsed();
-            if elapsed < self.config.min_request_interval {
-                tokio::time::sleep(self.config.min_request_interval - elapsed).await;
+            if let Some(remaining) = self.config.min_request_interval.checked_sub(last.elapsed())
+            {
+                tokio::time::sleep(remaining).await;
             }
         }
         *guard = Some(Instant::now());
@@ -230,8 +230,8 @@ impl VimmClient {
     /// Exponential backoff: `500ms * 2^(attempt-1)`, capped at `2^5`.
     async fn backoff(&self, attempt: u32) {
         let exp = attempt.saturating_sub(1).min(5);
-        let multiplier = 1u64 << exp;
-        let delay = Duration::from_millis(500) * multiplier as u32;
+        let multiplier = 1u32 << exp;
+        let delay = Duration::from_millis(500) * multiplier;
         tokio::time::sleep(delay).await;
     }
 }
@@ -355,9 +355,7 @@ mod tests {
         // Request 1: server sets a cookie.
         Mock::given(method("GET"))
             .and(path("/set"))
-            .respond_with(
-                ResponseTemplate::new(200).append_header("set-cookie", "sid=abc; Path=/"),
-            )
+            .respond_with(ResponseTemplate::new(200).append_header("set-cookie", "sid=abc; Path=/"))
             .up_to_n_times(1)
             .mount(&server)
             .await;
@@ -443,10 +441,7 @@ mod tests {
 
         let client = VimmClient::with_config(fast_cfg(server.uri())).unwrap();
         let url = format!("{}/dl", server.uri());
-        let mut resp = client
-            .post_stream(&url, &[("mediaId", "9")])
-            .await
-            .unwrap();
+        let mut resp = client.post_stream(&url, &[("mediaId", "9")]).await.unwrap();
         let mut collected = Vec::new();
         while let Some(chunk) = resp.next_chunk().await.unwrap() {
             collected.extend_from_slice(&chunk);
