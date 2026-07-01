@@ -1,11 +1,7 @@
 //! vimm-cli: command-line frontend for the vimm-downloader.
-//!
-//! This is a v1 stub. Subcommands are declared with clap but return
-//! "not yet implemented" until the corresponding `vimm-core` modules land
-//! (issues #3–#8). The scaffolding validates that the binary builds and
-//! links against `vimm-core` correctly.
 
 use clap::{Parser, Subcommand};
+use vimm_core::VimmClient;
 
 /// Download ROMs from the Vimm's Lair Vault.
 #[derive(Parser, Debug)]
@@ -20,6 +16,10 @@ struct Cli {
     /// Enable verbose logging.
     #[arg(short, long, global = true)]
     verbose: bool,
+
+    /// Output as JSON (machine-readable).
+    #[arg(long, global = true)]
+    json: bool,
 
     #[command(subcommand)]
     command: Command,
@@ -92,7 +92,16 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Systems => {
-            eprintln!("not yet implemented — see issue #4");
+            let client = VimmClient::new()?;
+            let systems = client.list_systems().await?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&systems)?);
+            } else {
+                println!("{:<8}  {:<35}  YEAR", "SLUG", "NAME");
+                for s in &systems {
+                    println!("{:<8}  {:<35}  {}", s.slug, s.name, s.launch_year);
+                }
+            }
         }
         Command::Search(args) => {
             eprintln!(
