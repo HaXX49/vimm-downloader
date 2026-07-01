@@ -61,6 +61,41 @@ pub struct VimmClient {
     last_request: tokio::sync::Mutex<Option<Instant>>,
 }
 
+/// A streaming response body returned by [`VimmClient::post_stream`].
+///
+/// The client retries on a 5xx *status* before constructing this value.
+/// Once returned, mid-stream I/O errors are the caller's responsibility
+/// (issue #7 handles them via a resumable `.7z.tmp`).
+pub struct StreamingResponse {
+    /// `Content-Length` of the body, if the server sent it.
+    pub content_length: Option<u64>,
+    body: Option<reqwest::Response>,
+}
+
+impl StreamingResponse {
+    /// Pull the next chunk of bytes from the body.
+    ///
+    /// Returns `Ok(None)` once the body is fully consumed (and on all
+    /// subsequent calls).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VimmError::Http`] if reading the next chunk fails.
+    pub async fn next_chunk(&mut self) -> Result<Option<Bytes>, VimmError> {
+        match &mut self.body {
+            Some(resp) => match resp.chunk().await {
+                Ok(Some(chunk)) => Ok(Some(chunk)),
+                Ok(None) => {
+                    self.body = None;
+                    Ok(None)
+                }
+                Err(e) => Err(VimmError::from(e)),
+            },
+            None => Ok(None),
+        }
+    }
+}
+
 impl VimmClient {
     /// Build a client with default configuration.
     ///
@@ -120,6 +155,52 @@ impl VimmClient {
                     let resp = resp.error_for_status().map_err(VimmError::from)?;
                     let text = resp.text().await.map_err(VimmError::from)?;
                     return Ok(text);
+                }
+                Err(e) => {
+                    if is_retryable(&e) && attempt < self.config.max_retries {
+                        attempt += 1;
+                        self.backoff(attempt).await;
+                        continue;
+                    }
+                    return Err(VimmError::from(e));
+                }
+            }
+        }
+    }
+
+    /// POST form fields to `url` and return the response as a stream.
+    ///
+    /// Retries on 5xx status (and retryable network errors) up to
+    /// `1 + max_retries` total attempts, then hands the 2xx body to the
+    /// caller via [`StreamingResponse`]. The `url` is used verbatim (the
+    /// download host `dl3.vimm.net` differs from `base_url`).
+    ///
+    /// # Errors
+    ///
+    /// - [`VimmError::Http`] on a 4xx status, after retries are exhausted on
+    ///   a 5xx, or on a non-retryable transport error.
+    pub async fn post_stream(
+        &self,
+        url: &str,
+        form: &[(&str, &str)],
+    ) -> Result<StreamingResponse, VimmError> {
+        let mut attempt: u32 = 0;
+        loop {
+            self.enforce_rate_limit().await;
+            match self.http.post(url).form(form).send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if status.is_server_error() && attempt < self.config.max_retries {
+                        attempt += 1;
+                        self.backoff(attempt).await;
+                        continue;
+                    }
+                    let resp = resp.error_for_status().map_err(VimmError::from)?;
+                    let content_length = resp.content_length();
+                    return Ok(StreamingResponse {
+                        content_length,
+                        body: Some(resp),
+                    });
                 }
                 Err(e) => {
                     if is_retryable(&e) && attempt < self.config.max_retries {
@@ -312,5 +393,64 @@ mod tests {
             cookie_header.contains("sid=abc"),
             "cookie header: {cookie_header}"
         );
+    }
+
+    #[tokio::test]
+    async fn post_stream_returns_body_and_content_length() {
+        let server = MockServer::start().await;
+        let body = b"ROMBYTES".to_vec();
+        Mock::given(method("POST"))
+            .and(path("/dl"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_bytes(body.clone())
+                    .insert_header("content-length", body.len().to_string()),
+            )
+            .mount(&server)
+            .await;
+
+        let client = VimmClient::with_config(fast_cfg(server.uri())).unwrap();
+        let url = format!("{}/dl", server.uri());
+        let mut resp = client
+            .post_stream(&url, &[("mediaId", "1"), ("alt", "0")])
+            .await
+            .unwrap();
+        assert_eq!(resp.content_length, Some(body.len() as u64));
+
+        let mut collected = Vec::new();
+        while let Some(chunk) = resp.next_chunk().await.unwrap() {
+            collected.extend_from_slice(&chunk);
+        }
+        assert_eq!(collected, body);
+        // Stream is exhausted; further reads yield None.
+        assert!(resp.next_chunk().await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn post_stream_retries_5xx_on_status() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/dl"))
+            .respond_with(ResponseTemplate::new(503))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/dl"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"ok".to_vec()))
+            .mount(&server)
+            .await;
+
+        let client = VimmClient::with_config(fast_cfg(server.uri())).unwrap();
+        let url = format!("{}/dl", server.uri());
+        let mut resp = client
+            .post_stream(&url, &[("mediaId", "9")])
+            .await
+            .unwrap();
+        let mut collected = Vec::new();
+        while let Some(chunk) = resp.next_chunk().await.unwrap() {
+            collected.extend_from_slice(&chunk);
+        }
+        assert_eq!(collected, b"ok");
     }
 }
