@@ -89,7 +89,10 @@ impl StreamingResponse {
                     self.body = None;
                     Ok(None)
                 }
-                Err(e) => Err(VimmError::from(e)),
+                Err(e) => {
+                    self.body = None;
+                    Err(VimmError::from(e))
+                }
             },
             None => Ok(None),
         }
@@ -119,6 +122,7 @@ impl VimmClient {
             .cookie_store(true)
             .timeout(config.timeout)
             .gzip(true)
+            .redirect(reqwest::redirect::Policy::default())
             .build()
             .map_err(VimmError::from)?;
         Ok(Self {
@@ -236,6 +240,13 @@ impl VimmClient {
 }
 
 /// Whether a `reqwest` error is worth retrying (transient failures only).
+///
+/// Intentionally narrow: only timeouts and connection-establishment failures
+/// are retried. Mid-connection resets (which surface via `is_request()`
+/// without `is_timeout`/`is_connect`) are NOT retried here; for downloads,
+/// #7's resumable `.7z.tmp` handles mid-stream failures instead. Broaden
+/// only if #9's live spike shows pre-header resets are common enough to
+/// warrant the noisier `is_request()` set.
 fn is_retryable(e: &reqwest::Error) -> bool {
     e.is_timeout() || e.is_connect()
 }
@@ -309,6 +320,8 @@ mod tests {
         let client = VimmClient::with_config(fast_cfg(server.uri())).unwrap();
         let body = client.get_text("/x").await.unwrap();
         assert_eq!(body, "ok");
+        // Exactly 3 requests: 2× 500 then 1× 200.
+        assert_eq!(server.received_requests().await.unwrap().len(), 3);
     }
 
     #[tokio::test]
@@ -322,6 +335,8 @@ mod tests {
         let client = VimmClient::with_config(fast_cfg(server.uri())).unwrap();
         let err = client.get_text("/missing").await.unwrap_err();
         assert!(matches!(err, VimmError::Http(_)));
+        // 4xx is not retried: exactly 1 request.
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
     }
 
     #[tokio::test]
@@ -446,5 +461,52 @@ mod tests {
             collected.extend_from_slice(&chunk);
         }
         assert_eq!(collected, b"ok");
+    }
+
+    #[tokio::test]
+    async fn get_text_exhausts_retries_on_persistent_5xx() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let client = VimmClient::with_config(fast_cfg(server.uri())).unwrap();
+        let err = client.get_text("/x").await.unwrap_err();
+        assert!(matches!(err, VimmError::Http(_)));
+        // Cap is 3 total attempts (1 + max_retries = 2); then it gives up.
+        assert_eq!(
+            server.received_requests().await.unwrap().len(),
+            3,
+            "expected exactly 3 attempts"
+        );
+    }
+
+    #[tokio::test]
+    async fn user_agent_header_is_sent() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+            .mount(&server)
+            .await;
+
+        let client = VimmClient::with_config(fast_cfg(server.uri())).unwrap();
+        let _ = client.get_text("/x").await.unwrap();
+
+        let received = server.received_requests().await.unwrap();
+        let ua = received
+            .first()
+            .expect("a request was received")
+            .headers
+            .iter()
+            .find_map(|(k, v)| {
+                if k.as_str().eq_ignore_ascii_case("user-agent") {
+                    v.to_str().ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or("");
+        assert!(ua.contains("Chrome"), "user-agent: {ua}");
     }
 }
