@@ -10,7 +10,7 @@ use bytes::Bytes;
 use reqwest::Client as ReqwestClient;
 
 use crate::error::VimmError;
-use crate::model::{GameSummary, SearchQuery, System};
+use crate::model::{GameDetail, GameSummary, SearchQuery, System};
 
 /// Browser-like User-Agent (recent stable Chrome desktop).
 pub const DEFAULT_USER_AGENT: &str =
@@ -302,6 +302,22 @@ impl VimmClient {
         let path = format!("/vault/?{query_string}");
         let html = self.get_text(&path).await?;
         Ok(crate::search::parse(&html, query))
+    }
+
+    /// Fetch the detail page for a single game.
+    ///
+    /// Sends `GET /vault/{id}`, extracts the embedded `media` JSON,
+    /// and parses selects and metadata table.
+    ///
+    /// # Errors
+    ///
+    /// - [`VimmError::Http`] if the HTTP request fails.
+    /// - [`VimmError::Parse`] if the media JSON or page structure
+    ///   cannot be parsed.
+    pub async fn detail(&self, id: u32) -> Result<GameDetail, VimmError> {
+        let path = format!("/vault/{id}");
+        let html = self.get_text(&path).await?;
+        crate::detail::parse(&html, id)
     }
 }
 
