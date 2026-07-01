@@ -219,8 +219,7 @@ impl VimmClient {
     async fn enforce_rate_limit(&self) {
         let mut guard = self.last_request.lock().await;
         if let Some(last) = *guard {
-            if let Some(remaining) = self.config.min_request_interval.checked_sub(last.elapsed())
-            {
+            if let Some(remaining) = self.config.min_request_interval.checked_sub(last.elapsed()) {
                 tokio::time::sleep(remaining).await;
             }
         }
