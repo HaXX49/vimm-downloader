@@ -22,12 +22,16 @@ pub fn parse(html: &str) -> Vec<System> {
     let selector =
         scraper::Selector::parse("#subMenu a").expect("'#subMenu a' is a valid CSS selector");
     let year_re = Regex::new(r"Launched (\d{4})").expect("valid regex");
+    let base_url = url::Url::parse("https://vimm.net").expect("valid base URL");
 
     doc.select(&selector)
         .filter_map(|el| {
             let href = el.value().attr("href")?;
-            let slug = href.strip_prefix("/vault/")?;
-            if slug.is_empty() {
+            // Resolve both relative and absolute URLs, then validate the path.
+            let resolved = base_url.join(href).ok()?;
+            let path = resolved.path().to_string();
+            let slug = path.strip_prefix("/vault/")?;
+            if slug.is_empty() || slug.contains('/') {
                 return None;
             }
             let name = el.text().collect::<String>().trim().to_string();

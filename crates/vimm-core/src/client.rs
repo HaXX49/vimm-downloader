@@ -246,20 +246,37 @@ impl VimmClient {
     /// Hits `GET /vault` and parses the `#subMenu` links. The result is
     /// cached in-memory so subsequent calls avoid a network round-trip.
     ///
+    /// # Panics
+    ///
+    /// Panics only if the in-memory cache is corrupted (logically
+    /// unreachable).
+    ///
     /// # Errors
     ///
     /// - [`VimmError::Http`] if the HTTP request fails.
     /// - [`VimmError::Parse`] if the page structure doesn't match
     ///   expectations.
     pub async fn list_systems(&self) -> Result<Vec<System>, VimmError> {
-        let mut cache = self.systems_cache.lock().await;
-        if let Some(systems) = cache.as_ref() {
-            return Ok(systems.clone());
+        // Fast path — lock held only briefly for the cache check.
+        {
+            let cache = self.systems_cache.lock().await;
+            if let Some(systems) = cache.as_ref() {
+                return Ok(systems.clone());
+            }
         }
         let html = self.get_text("/vault").await?;
         let systems = crate::systems::parse(&html);
-        *cache = Some(systems.clone());
-        Ok(systems)
+        if systems.is_empty() {
+            return Err(VimmError::Parse(
+                "no systems found in #subMenu — page structure may have changed".into(),
+            ));
+        }
+        // Re-lock only to store.
+        let mut cache = self.systems_cache.lock().await;
+        if cache.is_none() {
+            *cache = Some(systems.clone());
+        }
+        Ok(cache.as_ref().expect("populated").clone())
     }
 }
 
@@ -532,5 +549,50 @@ mod tests {
             })
             .unwrap_or("");
         assert!(ua.contains("Chrome"), "user-agent: {ua}");
+    }
+
+    #[tokio::test]
+    async fn list_systems_caches_result() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(include_str!("../../../tests/fixtures/vault_home.html")),
+            )
+            .mount(&server)
+            .await;
+
+        let cfg = ClientConfig {
+            base_url: server.uri(),
+            min_request_interval: Duration::from_millis(1),
+            ..ClientConfig::default()
+        };
+        let client = VimmClient::with_config(cfg).unwrap();
+        let _ = client.list_systems().await.unwrap();
+        let _ = client.list_systems().await.unwrap();
+        // Only one HTTP request — the second call uses the cache.
+        assert_eq!(
+            server.received_requests().await.unwrap().len(),
+            1,
+            "expected exactly 1 HTTP request (cached)"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_systems_returns_parse_error_on_empty() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("<html></html>"))
+            .mount(&server)
+            .await;
+
+        let cfg = ClientConfig {
+            base_url: server.uri(),
+            min_request_interval: Duration::from_millis(1),
+            ..ClientConfig::default()
+        };
+        let client = VimmClient::with_config(cfg).unwrap();
+        let err = client.list_systems().await.unwrap_err();
+        assert!(matches!(err, VimmError::Parse(_)));
     }
 }
