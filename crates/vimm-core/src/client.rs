@@ -243,4 +243,28 @@ mod tests {
         let err = client.get_text("/missing").await.unwrap_err();
         assert!(matches!(err, VimmError::Http(_)));
     }
+
+    #[tokio::test]
+    async fn rate_limit_enforces_min_interval() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+            .mount(&server)
+            .await;
+
+        let cfg = ClientConfig {
+            base_url: server.uri(),
+            min_request_interval: Duration::from_millis(120),
+            ..ClientConfig::default()
+        };
+        let client = VimmClient::with_config(cfg).unwrap();
+
+        let start = Instant::now();
+        client.get_text("/a").await.unwrap();
+        client.get_text("/b").await.unwrap();
+        let elapsed = start.elapsed();
+
+        // Two request starts must be >= 120ms apart.
+        assert!(elapsed >= Duration::from_millis(120), "elapsed {elapsed:?}");
+    }
 }
