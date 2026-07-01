@@ -10,6 +10,6 @@
 #![allow(clippy::doc_markdown)]
 
 pub use vimm_core::{
-    ExtraFlag, Format, GameDetail, GameSummary, Media, Op, Order, SearchMode, SearchQuery, Sort,
-    System, VimmError,
+    ExtraFlag, Format, GameDetail, GameSummary, Media, Op, Order, Ratings, SearchMode, SearchQuery,
+    Sort, System, VimmError,
 };

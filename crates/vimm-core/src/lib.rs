@@ -13,6 +13,6 @@ pub mod model;
 
 pub use error::VimmError;
 pub use model::{
-    ExtraFlag, Format, GameDetail, GameSummary, Media, Op, Order, SearchMode, SearchQuery, Sort,
-    System,
+    ExtraFlag, Format, GameDetail, GameSummary, Media, Op, Order, Ratings, SearchMode, SearchQuery,
+    Sort, System,
 };

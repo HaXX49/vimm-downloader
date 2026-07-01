@@ -106,7 +106,7 @@ pub enum SearchMode {
 
 /// A search query against the Vault. Maps 1:1 onto vimm.net's advanced-search
 /// form parameters.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct SearchQuery {
     /// System slug, or `None`/`Some("all")` to search across all 33 systems.
     pub system: Option<String>,
@@ -122,7 +122,7 @@ pub struct SearchQuery {
     pub year: Option<(Op, u16)>,
     /// Rating filter (only meaningful in per-system mode; the all-system
     /// results table has no Rating column).
-    pub rating: Option<(Op, u32)>,
+    pub rating: Option<(Op, f32)>,
     /// Region ID (numeric, from the Vault's region `<select>`).
     pub region: Option<String>,
     /// Sort field.
