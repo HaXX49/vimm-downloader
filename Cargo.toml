@@ -16,8 +16,9 @@ authors = ["HaXX49"]
 
 [workspace.dependencies]
 # HTTP / async
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "gzip", "stream"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "gzip", "stream", "cookies"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "io-util"] }
+bytes = "1"
 url = "2"
 # Parsing
 scraper = "0.22"

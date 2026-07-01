@@ -10,6 +10,7 @@
 
 pub mod error;
 pub mod model;
+pub mod client;
 
 pub use error::VimmError;
 pub use model::{
