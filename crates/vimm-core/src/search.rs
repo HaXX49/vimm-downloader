@@ -24,18 +24,19 @@ use crate::model::{ExtraFlag, GameSummary, SearchQuery};
 pub fn parse(html: &str, query: &SearchQuery) -> Vec<GameSummary> {
     let doc = Html::parse_document(html);
 
-    let th_sel = Selector::parse("table th").expect("valid selector");
-    let is_adv = doc
-        .select(&th_sel)
-        .next()
-        .is_some_and(|el| el.text().collect::<String>().trim() == "System");
-
     let row_sel = Selector::parse("table tbody tr").expect("valid selector");
     let decoy_sel = Selector::parse("a[href*='/vault/999999']").expect("valid selector");
     let link_sel = Selector::parse("a[href^='/vault/']:not(a[href*='/vault/999999'])")
         .expect("valid selector");
     let badge_sel = Selector::parse("b.redBorder").expect("valid selector");
     let flag_sel = Selector::parse("img.flag").expect("valid selector");
+    let th_sel = Selector::parse("th").expect("valid selector");
+
+    let is_adv = doc
+        .select(&Selector::parse("table").expect("valid selector"))
+        .find(|table| table.select(&link_sel).next().is_some())
+        .and_then(|table| table.select(&th_sel).next())
+        .is_some_and(|el| el.text().collect::<String>().trim() == "System");
 
     doc.select(&row_sel)
         .filter(|row| row.select(&decoy_sel).next().is_none())
