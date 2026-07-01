@@ -173,7 +173,7 @@ fn join_url(base: &str, path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::method;
+    use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
@@ -266,5 +266,51 @@ mod tests {
 
         // Two request starts must be >= 120ms apart.
         assert!(elapsed >= Duration::from_millis(120), "elapsed {elapsed:?}");
+    }
+
+    #[tokio::test]
+    async fn cookies_persist_across_requests() {
+        let server = MockServer::start().await;
+        // Request 1: server sets a cookie.
+        Mock::given(method("GET"))
+            .and(path("/set"))
+            .respond_with(
+                ResponseTemplate::new(200).append_header("set-cookie", "sid=abc; Path=/"),
+            )
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        // Request 2: expect the cookie to be sent back.
+        Mock::given(method("GET"))
+            .and(path("/echo"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("echo"))
+            .mount(&server)
+            .await;
+
+        let client = VimmClient::with_config(fast_cfg(server.uri())).unwrap();
+        client.get_text("/set").await.unwrap();
+        client.get_text("/echo").await.unwrap();
+
+        // Inspect received requests on the mock server.
+        let received = server.received_requests().await.unwrap();
+        let echo_req = received
+            .iter()
+            .find(|r| r.url.path() == "/echo")
+            .expect("echo request received");
+        let cookie_header = echo_req
+            .headers
+            .iter()
+            .find_map(|(k, v)| {
+                if k.as_str().eq_ignore_ascii_case("cookie") {
+                    v.to_str().ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or("");
+        assert!(
+            cookie_header.contains("sid=abc"),
+            "cookie header: {cookie_header}"
+        );
     }
 }
