@@ -451,7 +451,7 @@ mod tests {
             simultaneous: Some(true),
             publisher: Some("Square".into()),
             year: Some((Op::Ge, 1997)),
-            rating: Some((Op::Ge, 8)),
+            rating: Some((Op::Ge, 8.0)),
             region: Some("8".into()),
             sort: Sort::Rating,
             order: Order::Desc,
