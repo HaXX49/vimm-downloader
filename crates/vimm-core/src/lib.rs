@@ -9,6 +9,7 @@
 #![allow(clippy::doc_markdown)]
 
 pub mod client;
+pub mod detail;
 pub mod error;
 pub mod model;
 pub mod search;
