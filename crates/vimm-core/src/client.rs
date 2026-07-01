@@ -10,6 +10,7 @@ use bytes::Bytes;
 use reqwest::Client as ReqwestClient;
 
 use crate::error::VimmError;
+use crate::model::System;
 
 /// Browser-like User-Agent (recent stable Chrome desktop).
 pub const DEFAULT_USER_AGENT: &str =
@@ -59,6 +60,7 @@ pub struct VimmClient {
     http: ReqwestClient,
     config: ClientConfig,
     last_request: tokio::sync::Mutex<Option<Instant>>,
+    systems_cache: tokio::sync::Mutex<Option<Vec<System>>>,
 }
 
 /// A streaming response body returned by [`VimmClient::post_stream`].
@@ -129,6 +131,7 @@ impl VimmClient {
             http,
             config,
             last_request: tokio::sync::Mutex::new(None),
+            systems_cache: tokio::sync::Mutex::new(None),
         })
     }
 
@@ -236,6 +239,27 @@ impl VimmClient {
         let multiplier = 1u32 << exp;
         let delay = Duration::from_millis(500) * multiplier;
         tokio::time::sleep(delay).await;
+    }
+
+    /// Fetch and cache the list of supported consoles.
+    ///
+    /// Hits `GET /vault` and parses the `#subMenu` links. The result is
+    /// cached in-memory so subsequent calls avoid a network round-trip.
+    ///
+    /// # Errors
+    ///
+    /// - [`VimmError::Http`] if the HTTP request fails.
+    /// - [`VimmError::Parse`] if the page structure doesn't match
+    ///   expectations.
+    pub async fn list_systems(&self) -> Result<Vec<System>, VimmError> {
+        let mut cache = self.systems_cache.lock().await;
+        if let Some(systems) = cache.as_ref() {
+            return Ok(systems.clone());
+        }
+        let html = self.get_text("/vault").await?;
+        let systems = crate::systems::parse(&html);
+        *cache = Some(systems.clone());
+        Ok(systems)
     }
 }
 
