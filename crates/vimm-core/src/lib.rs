@@ -11,6 +11,7 @@
 pub mod client;
 pub mod error;
 pub mod model;
+pub mod search;
 pub mod systems;
 
 pub use client::{ClientConfig, StreamingResponse, VimmClient};

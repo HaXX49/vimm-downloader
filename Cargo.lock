@@ -2681,6 +2681,7 @@ dependencies = [
  "anyhow",
  "clap",
  "indicatif",
+ "serde_json",
  "tokio",
  "vimm-core",
 ]

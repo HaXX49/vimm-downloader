@@ -10,7 +10,7 @@ use bytes::Bytes;
 use reqwest::Client as ReqwestClient;
 
 use crate::error::VimmError;
-use crate::model::System;
+use crate::model::{GameSummary, SearchQuery, System};
 
 /// Browser-like User-Agent (recent stable Chrome desktop).
 pub const DEFAULT_USER_AGENT: &str =
@@ -277,6 +277,31 @@ impl VimmClient {
             *cache = Some(systems.clone());
         }
         Ok(cache.as_ref().expect("populated").clone())
+    }
+
+    /// Search the Vault and return matching games.
+    ///
+    /// Builds the URL from `query.to_params()`, sends `GET /vault/`, and
+    /// parses the results table (handles both per-system and all-system
+    /// schemas).
+    ///
+    /// # Errors
+    ///
+    /// - [`VimmError::Http`] if the HTTP request fails.
+    /// - [`VimmError::Parse`] if the response cannot be parsed as a
+    ///   search results page.
+    pub async fn search(&self, query: &SearchQuery) -> Result<Vec<GameSummary>, VimmError> {
+        let params = query.to_params();
+        let query_string = {
+            let mut ser = url::form_urlencoded::Serializer::new(String::new());
+            for (k, v) in &params {
+                ser.append_pair(k, v);
+            }
+            ser.finish()
+        };
+        let path = format!("/vault/?{query_string}");
+        let html = self.get_text(&path).await?;
+        Ok(crate::search::parse(&html, query))
     }
 }
 
