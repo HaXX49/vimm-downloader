@@ -14,6 +14,8 @@ use crate::model::{Format, GameDetail, Media, Ratings};
 
 /// Parse a Vault game detail page into [`GameDetail`].
 ///
+/// `id` is the game ID from the URL path (`/vault/{id}`).
+///
 /// # Panics
 ///
 /// Panics if any of the hardcoded CSS selectors (`h1`, `.vaultTable tr`,
@@ -24,7 +26,7 @@ use crate::model::{Format, GameDetail, Media, Ratings};
 ///
 /// - [`VimmError::Parse`] if the media JSON, metadata table, or expected
 ///   HTML structure cannot be found or parsed.
-pub fn parse(html: &str) -> Result<GameDetail, VimmError> {
+pub fn parse(html: &str, id: u32) -> Result<GameDetail, VimmError> {
     let doc = scraper::Html::parse_document(html);
 
     // --- Title ---
@@ -60,8 +62,8 @@ pub fn parse(html: &str) -> Result<GameDetail, VimmError> {
     }
 
     // --- Selects (version, disc, format hint) ---
-    let _selected_version = get_selected_value(html, "dl_version");
-    let _selected_disc = get_selected_value(html, "disc_number");
+    let selected_version = get_selected_value(html, "dl_version");
+    let selected_disc = get_selected_value(html, "disc_number");
     let has_format_select = scraper::Html::parse_document(html)
         .select(&scraper::Selector::parse("#dl_format").unwrap())
         .next()
@@ -77,7 +79,7 @@ pub fn parse(html: &str) -> Result<GameDetail, VimmError> {
                 if format.key == value {
                     format.label = opt.text().collect::<String>().trim().to_string();
                     format.description = opt.value().attr("title").unwrap_or("").to_string();
-                    format.alt = 0; // corrected from Mirror order below
+                    // alt was set by build_formats; trust the per-entry index.
                 }
             }
         }
@@ -120,18 +122,6 @@ pub fn parse(html: &str) -> Result<GameDetail, VimmError> {
 
     let verified_date = meta.get("Verified").cloned().unwrap_or_default();
 
-    // Rebuild alt indexes from the Mirror order in the first entry.
-    if let Some(first) = raw_entries.first() {
-        for format in &mut media_list.iter_mut().flat_map(|m| &mut m.formats) {
-            if let Some(pos) = first.mirror.iter().position(|k| k == &format.key) {
-                format.alt = u8::try_from(pos).unwrap_or(0);
-            }
-        }
-    }
-
-    // Pick the id from the first media entry.
-    let id = raw_entries.first().map_or(0, |e| e.id);
-
     Ok(GameDetail {
         id,
         system: String::new(), // system not available on detail page in v1
@@ -145,6 +135,8 @@ pub fn parse(html: &str) -> Result<GameDetail, VimmError> {
         ratings,
         verified_date,
         media: media_list,
+        selected_version,
+        selected_disc,
     })
 }
 
@@ -172,12 +164,21 @@ struct RawMediaEntry {
     #[serde(rename = "Zipped")]
     zipped: Option<Vec<u64>>,
     #[serde(rename = "AltZipped")]
+    #[allow(dead_code)]
+    /// Available zipped sizes for alternative mirrors (v2 fallback).
     alt_zipped: Option<Vec<u64>>,
     #[serde(rename = "AltZipped2")]
+    #[allow(dead_code)]
     alt_zipped2: Option<Vec<u64>>,
 }
 
 /// Extract the `let media=[…]` JSON array from the page HTML.
+///
+/// Uses bracket-matching to find the balanced JSON array. This is not
+/// string-literal-aware (a `]` inside a string value would mis-nest),
+/// but in practice none of the free-text fields (`GoodTitle` is base64,
+/// others are short strings) contain brackets. Verified against real
+/// vimm.net pages in the #9 spike.
 fn extract_media_json(html: &str) -> Result<Vec<RawMediaEntry>, VimmError> {
     let start = html
         .find("media=")
@@ -297,8 +298,9 @@ mod tests {
     #[test]
     fn parses_single_format_detail() {
         let html = include_str!("../../../tests/fixtures/game_834.html");
-        let detail = parse(html).expect("should parse");
+        let detail = parse(html, 834).expect("should parse");
 
+        assert_eq!(detail.id, 834);
         assert_eq!(detail.title, "Super Mario Bros.");
         assert_eq!(detail.region, "USA");
         assert_eq!(detail.players, 2);
@@ -320,14 +322,18 @@ mod tests {
         assert_eq!(m.formats.len(), 1);
         assert_eq!(m.formats[0].key, "nes");
         assert_eq!(m.formats[0].alt, 0);
+        assert_eq!(m.formats[0].label, ".nes");
         assert_eq!(m.formats[0].zipped_size_bytes, 21_874);
+        assert_eq!(detail.selected_version, Some("1.0".into()));
+        assert_eq!(detail.selected_disc, Some("1".into()));
     }
 
     #[test]
     fn parses_multi_format_detail() {
         let html = include_str!("../../../tests/fixtures/game_7818.html");
-        let detail = parse(html).expect("should parse");
+        let detail = parse(html, 7818).expect("should parse");
 
+        assert_eq!(detail.id, 7818);
         assert_eq!(detail.title, "Armored Core");
         assert_eq!(detail.region, "USA");
         assert_eq!(detail.players, 1);
@@ -348,24 +354,32 @@ mod tests {
         assert_eq!(m0.formats[0].key, "ciso");
         assert_eq!(m0.formats[0].alt, 0);
         assert_eq!(m0.formats[0].zipped_size_bytes, 350_000);
+        assert_eq!(m0.formats[0].label, ".ciso");
+        assert_eq!(m0.formats[0].description, "Compressed ISO");
         assert_eq!(m0.formats[1].key, "nkit.iso");
         assert_eq!(m0.formats[1].alt, 1);
         assert_eq!(m0.formats[1].zipped_size_bytes, 320_000);
+        assert_eq!(m0.formats[1].label, ".nkit.iso");
+        assert_eq!(m0.formats[1].description, "NKit compressed ISO");
         assert_eq!(m0.formats[2].key, "rvz");
         assert_eq!(m0.formats[2].alt, 2);
         assert_eq!(m0.formats[2].zipped_size_bytes, 310_000);
+        assert_eq!(m0.formats[2].label, ".rvz");
+        assert_eq!(m0.formats[2].description, "Dolphin compressed RVZ");
 
         // Second media: version 1.1, three formats.
         let m1 = &detail.media[1];
         assert_eq!(m1.version, "1.1");
         assert_eq!(m1.good_title, "Armored Core (USA) (v1.1).iso");
         assert_eq!(m1.formats.len(), 3);
+        assert_eq!(detail.selected_version, Some("1.0".into()));
+        assert_eq!(detail.selected_disc, Some("1".into()));
     }
 
     #[test]
     fn missing_media_json_returns_error() {
         let html = "<html><body>no media</body></html>";
-        let result = parse(html);
+        let result = parse(html, 0);
         assert!(result.is_err());
     }
 }

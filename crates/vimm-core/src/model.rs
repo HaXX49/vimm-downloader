@@ -249,6 +249,12 @@ pub struct GameDetail {
     pub verified_date: String,
     /// All version/disc/format combinations.
     pub media: Vec<Media>,
+    /// The site's pre-selected version (from `#dl_version option[selected]`).
+    #[serde(default)]
+    pub selected_version: Option<String>,
+    /// The site's pre-selected disc number (from `#disc_number option[selected]`).
+    #[serde(default)]
+    pub selected_disc: Option<String>,
 }
 
 /// Community ratings breakdown.
