@@ -168,24 +168,56 @@ async fn main() -> anyhow::Result<()> {
             )
             .await?;
 
-            if cli.json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&serde_json::json!({
-                        "game_id": args.id,
-                        "media_id": media.id,
-                        "version": media.version,
-                        "format": fmt.key,
-                        "path": path,
-                    }))?
-                );
-            } else {
-                if let Some(bar) = progress_bar {
-                    bar.finish_with_message(format!("Downloaded to {}", path.display()));
+            let _extracted = if args.archive {
+                if cli.json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "game_id": args.id,
+                            "media_id": media.id,
+                            "version": media.version,
+                            "format": fmt.key,
+                            "archive": path,
+                        }))?
+                    );
                 } else {
-                    eprintln!("Downloaded to {}", path.display());
+                    if let Some(bar) = progress_bar {
+                        bar.finish_with_message(format!("Archive saved: {}", path.display()));
+                    } else {
+                        eprintln!("Archive saved: {}", path.display());
+                    }
                 }
-            }
+                Vec::new()
+            } else {
+                let opts = vimm_core::ExtractOptions {
+                    keep_archive: false,
+                    keep_extras: args.keep_extras,
+                };
+                let files = vimm_core::extract(&path, out, opts)?;
+
+                if cli.json {
+                    let file_paths: Vec<_> = files.iter()
+                        .map(|f| f.to_string_lossy().to_string())
+                        .collect();
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "game_id": args.id,
+                            "media_id": media.id,
+                            "version": media.version,
+                            "format": fmt.key,
+                            "files": file_paths,
+                        }))?
+                    );
+                } else {
+                    if let Some(bar) = progress_bar {
+                        bar.finish_with_message(format!("Extracted {} files", files.len()));
+                    } else {
+                        eprintln!("Extracted {} files to {}", files.len(), out.display());
+                    }
+                }
+                files
+            };
         }
     }
 
