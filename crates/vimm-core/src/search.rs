@@ -25,7 +25,6 @@ pub fn parse(html: &str, query: &SearchQuery) -> Vec<GameSummary> {
     let doc = Html::parse_document(html);
 
     let row_sel = Selector::parse("table tr").expect("valid selector");
-    let decoy_sel = Selector::parse("a[href*='/vault/999999']").expect("valid selector");
     let link_sel = Selector::parse("a[href^='/vault/']:not(a[href*='/vault/999999'])")
         .expect("valid selector");
     let badge_sel = Selector::parse("b.redBorder").expect("valid selector");
