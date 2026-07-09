@@ -35,6 +35,10 @@ mod tests {
             .join(name)
     }
 
+    fn normalize(text: &str) -> String {
+        text.replace("\r\n", "\n").trim().to_string()
+    }
+
     fn assert_snapshot(name: &str, actual: &str) {
         let path = expected_path(name);
         if !path.exists() || std::env::var("UPDATE_SNAPSHOTS").is_ok() {
@@ -45,8 +49,8 @@ mod tests {
         }
         let expected = fs::read_to_string(&path).unwrap();
         assert_eq!(
-            actual.trim(),
-            expected.trim(),
+            normalize(actual),
+            normalize(&expected),
             "Snapshot mismatch for {name}. Run with UPDATE_SNAPSHOTS=1 to regenerate."
         );
     }
