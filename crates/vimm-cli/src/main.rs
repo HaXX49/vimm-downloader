@@ -1,6 +1,7 @@
 //! vimm-cli: command-line frontend for the vimm-downloader.
 
 use clap::{Parser, Subcommand};
+use vimm_core::model::{Order, SearchQuery, Sort};
 use vimm_core::VimmClient;
 
 /// Download ROMs from the Vimm's Lair Vault.
@@ -104,13 +105,85 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Command::Search(args) => {
-            eprintln!(
-                "not yet implemented — see issue #5 (query={:?}, system={:?})",
-                args.query, args.system
-            );
+            let client = VimmClient::new()?;
+
+            let sort = match args.sort.to_lowercase().as_str() {
+                "title" => Sort::Title,
+                "players" => Sort::Players,
+                "year" => Sort::Year,
+                "rating" => Sort::Rating,
+                _ => Sort::Title,
+            };
+            let order = match args.order.to_uppercase().as_str() {
+                "ASC" => Order::Asc,
+                "DESC" => Order::Desc,
+                _ => Order::Asc,
+            };
+
+            let query = SearchQuery {
+                system: args.system,
+                q: args.query,
+                sort,
+                order,
+                ..Default::default()
+            };
+
+            let mut results = client.search(&query).await?;
+            let total = results.len();
+            results.truncate(args.limit as usize);
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&results)?);
+            } else {
+                println!("{:<6}  {:<40}  {:<10}  {:<8}  RATING", "ID", "TITLE", "SYSTEM", "VERSION");
+                for g in &results {
+                    let rating = g.rating.map_or("-".to_string(), |r| format!("{:.1}", r));
+                    println!("{:<6}  {:<40}  {:<10}  {:<8}  {}", g.id, g.title, g.system, g.version, rating);
+                }
+                println!("\n{} result(s) (showing {} of {total})", results.len(), results.len());
+            }
         }
         Command::Info { id } => {
-            eprintln!("not yet implemented — see issue #6 (id={id})");
+            let client = VimmClient::new()?;
+            let detail = client.detail(id).await?;
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&detail)?);
+            } else {
+                println!("Title: {}", detail.title);
+                println!("System: {}", detail.system);
+                println!("Region: {}", detail.region);
+                println!("Players: {}", detail.players);
+                println!("Year: {}", detail.year);
+                println!("Publisher: {}", detail.publisher);
+                println!("Serial: {}", detail.serial);
+                println!("Ratings: G={:.1} S={:.1} GP={:.1} O={:.1} ({} votes)",
+                    detail.ratings.graphics, detail.ratings.sound,
+                    detail.ratings.gameplay, detail.ratings.overall,
+                    detail.ratings.votes);
+                if !detail.verified_date.is_empty() {
+                    println!("Verified: {}", detail.verified_date);
+                }
+                println!("\nMedia ({} version(s)):", detail.media.len());
+                for (i, media) in detail.media.iter().enumerate() {
+                    println!("\n  [{}] {} (disc {})", i + 1, media.version, media.disc);
+                    println!("    Title: {}", media.good_title);
+                    println!("    Serial: {}", media.serial);
+                    if !media.verified_date.is_empty() {
+                        println!("    Verified: {}", media.verified_date);
+                    }
+                    println!("    Formats:");
+                    for fmt in &media.formats {
+                        println!("      alt={} key={} label={} size={}",
+                            fmt.alt, fmt.key, fmt.label,
+                            if fmt.zipped_size_bytes > 0 {
+                                format!("{} KB", fmt.zipped_size_bytes / 1024)
+                            } else {
+                                "N/A".to_string()
+                            });
+                    }
+                }
+            }
         }
         Command::Download(args) => {
             let out = std::path::Path::new(&args.out);

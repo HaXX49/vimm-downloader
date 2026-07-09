@@ -309,11 +309,11 @@ vimm-downloader download <id>
 - Summary: Wire `vimm-cli` with `systems`, `search`, `info`, `download` subcommands + `--json` on each.
 - Problem statement: The CLI is the v1 frontend; needs a consistent surface matching the design, with human tables by default and machine JSON for scripting.
 - Acceptance criteria:
-  - [ ] clap derive: `systems`, `search`, `info`, `download`
-  - [ ] `search` flags: `--system` (optional), `--query`, `--region`, `--sort`, `--order`, `--limit`, `--players`, `--year`, `--publisher`, `--json`
-  - [ ] `download` flags: `--version`, `--disc`, `--format`, `--out`, `--archive`, `--keep-extras`, `--config`, `-v`, `--base-url`
-  - [ ] `--json` on every subcommand; default human-readable tables
-  - [ ] Defaults: newest version / disc 1 / first `#dl_format` option
+  - [x] clap derive: `systems`, `search`, `info`, `download`
+  - [x] `search` flags: `--system` (optional), `--query`, `--region`, `--sort`, `--order`, `--limit`, `--players`, `--year`, `--publisher`, `--json`
+  - [x] `download` flags: `--version`, `--disc`, `--format`, `--out`, `--archive`, `--keep-extras`, `--config`, `-v`, `--base-url`
+  - [x] `--json` on every subcommand; default human-readable tables
+  - [x] Defaults: newest version / disc 1 / first `#dl_format` option
 - Resources: Locked design → CLI surface. Depends on: #4, #5, #6, #7, #8.
 
 **#11 — Config file with per-system format preferences**
