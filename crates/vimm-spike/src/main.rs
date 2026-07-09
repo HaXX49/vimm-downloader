@@ -12,7 +12,6 @@ use std::fs;
 use std::fs::File;
 use std::path::Path;
 
-use bytes::BytesMut;
 use tempfile::TempDir;
 use vimm_core::client::VimmClient;
 use vimm_core::model::GameDetail;
@@ -63,7 +62,6 @@ async fn main() -> anyhow::Result<()> {
     println!("=== Spike: Live Download Validation ===\n");
 
     let client = VimmClient::new()?;
-
     let mut findings = Vec::new();
 
     for sample in SAMPLE_GAMES {
@@ -91,12 +89,16 @@ async fn main() -> anyhow::Result<()> {
                     fmt.alt, fmt.key, fmt.label, fmt.zipped_size_bytes);
             }
 
-            for fmt in &media.formats {
-                let result = download_and_inspect(&client, media.id, fmt.alt, &fmt.key, &detail).await;
-                match result {
-                    Ok(r) => findings.push(r),
-                    Err(e) => println!("    ERROR downloading alt={}: {e}", fmt.alt),
-                }
+            if media.formats.is_empty() {
+                println!("    WARNING: no formats available");
+                continue;
+            }
+
+            let fmt = &media.formats[0];
+            let result = download_and_inspect(media.id, fmt.alt, &fmt.key, &detail).await;
+            match result {
+                Ok(r) => findings.push(r),
+                Err(e) => println!("    ERROR downloading alt={}: {e}", fmt.alt),
             }
         }
 
@@ -137,33 +139,37 @@ struct ArchiveEntry {
 }
 
 async fn download_and_inspect(
-    client: &VimmClient,
     media_id: u32,
     alt: u8,
     format_key: &str,
     detail: &GameDetail,
 ) -> anyhow::Result<DownloadFinding> {
-    let url = format!("{DL3_BASE}/dl");
-    let media_id_str = media_id.to_string();
-    let alt_str = alt.to_string();
-    let form: Vec<(&str, &str)> = vec![
-        ("mediaId", &media_id_str),
-        ("alt", &alt_str),
-    ];
+    let url = format!("{DL3_BASE}/?mediaId={media_id}&alt={alt}");
+    let referer = format!("https://vimm.net/vault/{}", detail.id);
 
     println!("    Downloading alt={alt} format={format_key}...");
+    println!("    URL: {url}");
+    println!("    Referer: {referer}");
 
-    let mut resp = client.post_stream(&url, &form).await?;
+    let http = reqwest::Client::builder()
+        .user_agent(vimm_core::client::DEFAULT_USER_AGENT)
+        .cookie_store(true)
+        .gzip(true)
+        .build()?;
 
-    let mut data = BytesMut::new();
-    while let Some(chunk) = resp.next_chunk().await? {
-        data.extend_from_slice(&chunk);
-    }
+    let resp = http.get(&url)
+        .header("Referer", &referer)
+        .send()
+        .await?
+        .error_for_status()?;
 
-    let content_length = resp.content_length;
+    let content_length = resp.content_length();
+    let content_type = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).map(String::from);
+
+    let data = resp.bytes().await?;
     let actual_len = data.len() as u64;
 
-    println!("    Downloaded {actual_len} bytes (Content-Length: {content_length:?})");
+    println!("    Downloaded {actual_len} bytes (Content-Length: {content_length:?}, Content-Type: {content_type:?})");
 
     let magic = detect_magic(&data);
     let archive_type = match &magic {

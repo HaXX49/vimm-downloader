@@ -158,18 +158,91 @@ struct RawMediaEntry {
     #[serde(rename = "Serial")]
     serial: String,
     #[serde(rename = "VerifiedDate")]
+    #[serde(default)]
     verified_date: String,
     #[serde(rename = "Mirror")]
     mirror: Vec<String>,
     #[serde(rename = "Zipped")]
+    #[serde(deserialize_with = "deserialize_zipped")]
     zipped: Option<Vec<u64>>,
     #[serde(rename = "AltZipped")]
     #[allow(dead_code)]
     /// Available zipped sizes for alternative mirrors (v2 fallback).
+    #[serde(deserialize_with = "deserialize_zipped")]
     alt_zipped: Option<Vec<u64>>,
     #[serde(rename = "AltZipped2")]
     #[allow(dead_code)]
+    #[serde(deserialize_with = "deserialize_zipped")]
     alt_zipped2: Option<Vec<u64>>,
+}
+
+/// Deserialize `Zipped`/`AltZipped`/`AltZipped2` fields that may be either
+/// a JSON array of numbers `[12345]`, a single number, a string, or null.
+fn deserialize_zipped<'de, D>(deserializer: D) -> Result<Option<Vec<u64>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+
+    struct ZippedVisitor;
+
+    impl<'de> Visitor<'de> for ZippedVisitor {
+        type Value = Option<Vec<u64>>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("null, array of numbers, or a single number/string")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: de::Deserializer<'de>,
+        {
+            deserializer.deserialize_any(ZippedVisitor)
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: de::SeqAccess<'de>,
+        {
+            let mut vec = Vec::new();
+            while let Some(val) = seq.next_element::<u64>()? {
+                vec.push(val);
+            }
+            Ok(Some(vec))
+        }
+
+        fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(vec![v]))
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            v.parse::<u64>()
+                .map(|n| Some(vec![n]))
+                .map_err(de::Error::custom)
+        }
+    }
+
+    deserializer.deserialize_option(ZippedVisitor)
 }
 
 /// Extract the `let media=[…]` JSON array from the page HTML.

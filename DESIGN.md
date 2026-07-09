@@ -72,18 +72,18 @@ No checksum fields exposed in v1 (verification deferred).
 - **Search**: `GET /vault/?p=list&…` → parse results `<table>`; skip decoy `/vault/999999` href; real `/vault/{id}`; region from `<img class="flag" title>`. Detect schema by first `<th>`: `System` → all-system (drops Rating), `Title` → per-system.
 - **Detail**: `GET /vault/{id}` → extract `let media=[…]` JSON via regex + serde_json; decode base64 `GoodTitle`; build `formats` from `Mirror[]` + `Zipped/AltZipped/AltZipped2` by index; synthesize single format when `#dl_format` absent. Parse `#dl_version` (incl. `selected`), `#disc_number`, `#dl_format` options (label+title) and metadata `<table>`.
 
-## Download pipeline (7z, extract by elimination)
+## Download pipeline (7z/zip, extract by elimination)
 
 ```
-POST dl3.vimm.net  mediaId={id}&alt={0|1|2}
-  → stream to {out}/.{stem}.7z.tmp   (indicatif progress bar)
+GET dl3.vimm.net/?mediaId={id}&alt={0|1|2}  (Referer: vimm.net/vault/{gameId})
+  → stream to {out}/.{stem}.tmp   (indicatif progress bar)
   │
-  ├─ --archive: rename → {stem}.7z                         ✓ done
+  ├─ --archive: rename → {stem}.{ext}                          ✓ done
   └─ else: detect by magic bytes (7z primary, zip fallback)
            extract all entries to {out}/
            delete junk by blocklist (txt nfo diz jpg jpeg png html url)   ← "by elimination" keeps the ROM
-           delete .7z.tmp                                   ✓ done (ROM kept)
---keep-extras → don't delete junk.   Final filename = 7z inner entry name (falls back to GoodTitle+ext).
+           delete .tmp                                        ✓ done (ROM kept)
+--keep-extras → don't delete junk.   Final filename = archive inner entry name (falls back to GoodTitle+ext).
 ```
 
 No format-extension allowlist needed — the blocklist-by-elimination handles all 33 systems including `.bin`+`.cue`/`.gdi` CD images (companions aren't junk, so they survive).
@@ -142,12 +142,13 @@ vimm-downloader download <id>
 - Mirror fallback (`dl.vimm.net` vs `dl3`) and headless-browser fallback if blocked.
 - Checksum verification (MD5/SHA1) — hashes are for the original image, not the compressed format, so deferred until a conversion/verification strategy is decided.
 
-## Open items (confirm at impl time, no user decision needed)
+## Open items (confirmed via spike #9, 2026-07-09)
 
-1. `dl3.vimm.net` POST: send `alt=0` explicitly vs. omit when primary format.
-2. Verify dl3 always serves 7z and `sevenz-rust2` covers the codec (LZMA2/BCJ); keep zip fallback.
-3. Confirm inner 7z entry filename is usable as the final ROM name.
-4. Validate `.bin`+`.cue` keep-all on a real PS1/Sega CD download.
+1. **`dl3.vimm.net` download**: GET request (not POST). The `submitDL()` JS handler changes `method='GET'` before submit. Requires `Referer` header set to the detail page URL (`https://vimm.net/vault/{id}`), browser UA, and cookies from visiting vimm.net first. URL shape: `https://dl3.vimm.net/?mediaId={mediaId}&alt={0|1|2}`.
+2. **Archive format**: Small games (NES/SNES) ship as **ZIP**; large games (GameCube/Wii/PS2) ship as **7z**. Both `sevenz-rust2` and `zip` crates are needed. No other formats observed.
+3. **Inner entry filenames**: Usable as final ROM names (e.g., `Super Mario Bros. (World).nes`, `Super Smash Bros. Melee (USA) (En,Ja).ciso`).
+4. **Junk files**: Every archive contains a `Vimm's Lair.txt` file (266-305 bytes). The blocklist-by-elimination strategy works — `.txt` is in the junk list, ROM files survive.
+5. **mediaId ≠ game ID**: The `mediaId` in the download form differs from the URL game ID. Must use the `Media.id` from the detail page's embedded JSON.
 
 ---
 
@@ -263,15 +264,16 @@ vimm-downloader download <id>
 
 **#7 — Download streaming with progress**
 - Theme: Streaming I/O & progress reporting
-- Summary: `POST dl3.vimm.net` (`mediaId`, `alt`), stream to `.{stem}.7z.tmp` with indicatif progress.
+- Summary: `GET dl3.vimm.net/?mediaId={id}&alt={N}` with Referer header, stream to `.{stem}.tmp` with indicatif progress.
 - Problem statement: ROMs range KB → ~1GB; must stream to disk (not buffer), with live progress and resumable `.tmp` naming. `alt` selects the format variant.
 - Acceptance criteria:
-  - [ ] `VimmClient::download(media_id, alt, dest, progress_cb)` streams to `.7z.tmp`
+  - [ ] `VimmClient::download(media_id, alt, game_id, dest, progress_cb)` streams to `.tmp`
+  - [ ] Uses GET request with Referer header set to `vimm.net/vault/{game_id}`
   - [ ] Uses `Content-Length` for progress; indeterminate bar fallback
   - [ ] indicatif bar in CLI; progress callback hook in core (for bindings)
   - [ ] Atomic rename on success; cleanup `.tmp` on error
-  - [ ] Honors rate limit + retry on the POST
-- Resources: Locked design → Download pipeline. Depends on: #3, #6.
+  - [ ] Honors rate limit + retry on the GET request
+- Resources: Locked design → Download pipeline. Depends on: #3, #6, #9.
 
 **#8 — Archive extraction + junk removal**
 - Theme: 7z extraction & file-by-elimination logic
@@ -288,14 +290,15 @@ vimm-downloader download <id>
 
 **#9 — Spike — validate open download assumptions**
 - Theme: Empirical validation / research spike
-- Summary: Confirm dl3 POST shape, 7z codec coverage, inner filename sanity, multi-`.bin`+`.cue` keep-all on a real PS1/Sega CD download.
+- Summary: Confirm dl3 download method, archive format coverage, inner filename sanity, multi-`.bin`+`.cue` keep-all on a real PS1/Sega CD download.
 - Problem statement: Several pipeline assumptions can only be confirmed against the live site before finalizing request shape and extraction rules.
 - Acceptance criteria:
-  - [ ] Document `alt=0` send-explicit vs omit for primary format
-  - [ ] Confirm dl3 always serves 7z + `sevenz-rust2` handles codec (LZMA2/BCJ); note any zip cases
-  - [ ] Capture inner entry filename for a sample game; confirm usable
-  - [ ] Download a multi-disc PS1/Sega CD title; confirm `.bin`+`.cue` (and multiple `.bin`) survive junk blocklist
-  - [ ] Update code comments / design doc with findings
+  - [x] Document download method: GET with Referer header (not POST)
+  - [x] Confirm archive formats: ZIP for small games, 7z for large games; both crates needed
+  - [x] Capture inner entry filenames for sample games; confirmed usable
+  - [x] Document junk file pattern: "Vimm's Lair.txt" in all archives
+  - [x] Document mediaId ≠ game ID; must use Media.id from detail page
+  - [x] Update code comments / design doc with findings
 - Resources: Locked design → Open items. Depends on: #7, #8.
 
 ### M4 — CLI & Config

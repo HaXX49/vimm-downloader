@@ -2762,6 +2762,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytes",
+ "reqwest",
  "sevenz-rust2",
  "tempfile",
  "tokio",
