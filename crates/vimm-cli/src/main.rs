@@ -189,6 +189,12 @@ async fn main() -> anyhow::Result<()> {
             let out = std::path::Path::new(&args.out);
             std::fs::create_dir_all(out)?;
 
+            let config_path = args.config.as_ref().map(std::path::Path::new);
+            let config = match config_path {
+                Some(p) => vimm_core::Config::load_from_path(p),
+                None => vimm_core::Config::load(),
+            };
+
             let client = VimmClient::new()?;
 
             let detail = client.detail(args.id).await?;
@@ -201,7 +207,12 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::bail!("No formats available for media {}", media.id);
             }
 
-            let fmt = &media.formats[0];
+            let resolved_format = config.resolve_format(&detail.system, args.format.as_deref());
+            let fmt = if resolved_format.is_empty() {
+                &media.formats[0]
+            } else {
+                media.formats.iter().find(|f| f.key == resolved_format).unwrap_or(&media.formats[0])
+            };
             eprintln!(
                 "Downloading: {} ({} format: {})",
                 media.good_title, media.version, fmt.key

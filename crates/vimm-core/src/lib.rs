@@ -10,6 +10,7 @@
 
 pub mod archive;
 pub mod client;
+pub mod config;
 pub mod detail;
 pub mod download;
 pub mod error;
@@ -19,6 +20,7 @@ pub mod systems;
 
 pub use archive::{extract, ExtractOptions};
 pub use client::{ClientConfig, StreamingResponse, VimmClient};
+pub use config::Config;
 pub use download::download_rom;
 pub use error::VimmError;
 pub use model::{
