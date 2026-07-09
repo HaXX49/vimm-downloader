@@ -24,35 +24,34 @@ use crate::model::{ExtraFlag, GameSummary, SearchQuery};
 pub fn parse(html: &str, query: &SearchQuery) -> Vec<GameSummary> {
     let doc = Html::parse_document(html);
 
-    let row_sel = Selector::parse("table tbody tr").expect("valid selector");
+    let row_sel = Selector::parse("table tr").expect("valid selector");
     let decoy_sel = Selector::parse("a[href*='/vault/999999']").expect("valid selector");
     let link_sel = Selector::parse("a[href^='/vault/']:not(a[href*='/vault/999999'])")
         .expect("valid selector");
     let badge_sel = Selector::parse("b.redBorder").expect("valid selector");
     let flag_sel = Selector::parse("img.flag").expect("valid selector");
-    let th_sel = Selector::parse("th").expect("valid selector");
-
-    let is_adv = doc
-        .select(&Selector::parse("table").expect("valid selector"))
-        .find(|table| table.select(&link_sel).next().is_some())
-        .and_then(|table| table.select(&th_sel).next())
-        .is_some_and(|el| el.text().collect::<String>().trim() == "System");
 
     doc.select(&row_sel)
-        .filter(|row| row.select(&decoy_sel).next().is_none())
         .filter_map(|row| {
             let tds: Vec<_> = row.select(&Selector::parse("td").unwrap()).collect();
-            if tds.len() < 7 {
+            // Live site uses 5 columns for per-system: Title | Region | Version | Languages | Rating
+            // Live site uses 6 columns for all-system: System | Title | Region | Version | Languages
+            // Fixtures may have different layouts; detect by column count and content.
+            let has_system_col = tds.len() >= 6 || (tds.len() == 5 && tds[0].select(&link_sel).next().is_none());
+            if tds.len() < 5 {
                 return None;
             }
 
-            // --- columns are 0-indexed ---
-            // Adv:  System(0) | Title(1) | Players(2) | Year(3) | Region(4) | Version(5) | Languages(6)
-            // List: Title(0) | Players(1) | Year(2) | Rating(3) | Region(4) | Version(5) | Languages(6)
-            let (title_idx, system_idx, rating_idx) = if is_adv {
-                (1usize, Some(0usize), None)
+            // --- column mapping ---
+            // Per-system (5 cols): Title(0) | Region(1) | Version(2) | Languages(3) | Rating(4)
+            // All-system (6 cols): System(0) | Title(1) | Region(2) | Version(3) | Languages(4)
+            // All-system (5 cols fixture): System(0) | Title(1) | Region(2) | Version(3) | Languages(4)
+            let (title_idx, region_idx, version_idx, languages_idx, rating_idx, system_idx) = if has_system_col {
+                // All-system: no rating column
+                (1, 2, 3, 4, None, Some(0))
             } else {
-                (0usize, None, Some(3usize))
+                // Per-system: has rating
+                (0, 1, 2, 3, Some(4), None)
             };
 
             let title_td = &tds[title_idx];
@@ -70,7 +69,7 @@ pub fn parse(html: &str, query: &SearchQuery) -> Vec<GameSummary> {
             }
             let title = link.text().collect::<String>().trim().to_string();
 
-            // System.
+            // System (from column or query).
             let system = match system_idx {
                 Some(idx) => tds[idx].text().collect::<String>().trim().to_string(),
                 None => query.system.clone().unwrap_or_default(),
@@ -86,17 +85,17 @@ pub fn parse(html: &str, query: &SearchQuery) -> Vec<GameSummary> {
                 .collect();
 
             // Regions (flag images in the region column).
-            let regions: Vec<String> = tds[4] // same index for both schemas
+            let regions: Vec<String> = tds[region_idx]
                 .select(&flag_sel)
                 .filter_map(|img| img.value().attr("title"))
                 .map(ToString::to_string)
                 .collect();
 
             // Version column.
-            let version = tds[5].text().collect::<String>().trim().to_string();
+            let version = tds[version_idx].text().collect::<String>().trim().to_string();
 
             // Languages column (comma-separated, "-" → empty).
-            let languages: Vec<String> = tds[6]
+            let languages: Vec<String> = tds[languages_idx]
                 .text()
                 .collect::<String>()
                 .split(',')

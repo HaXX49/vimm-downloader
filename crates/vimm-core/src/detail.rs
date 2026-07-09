@@ -55,7 +55,7 @@ pub fn parse(html: &str, id: u32) -> Result<GameDetail, VimmError> {
             version: entry.version.clone(),
             disc: entry.sort_order,
             good_title,
-            serial: entry.serial.clone(),
+            serial: entry.serial.clone().unwrap_or_default(),
             verified_date: entry.verified_date.clone(),
             formats,
         });
@@ -156,7 +156,8 @@ struct RawMediaEntry {
     #[serde(rename = "GoodTitle")]
     good_title: String,
     #[serde(rename = "Serial")]
-    serial: String,
+    #[serde(default)]
+    serial: Option<String>,
     #[serde(rename = "VerifiedDate")]
     #[serde(default)]
     verified_date: String,

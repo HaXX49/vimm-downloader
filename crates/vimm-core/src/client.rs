@@ -228,6 +228,8 @@ impl VimmClient {
     /// `1 + max_retries` total attempts, then hands the 2xx body to the
     /// caller via [`StreamingResponse`].
     ///
+    /// Uses a 10-minute timeout for large downloads.
+    ///
     /// # Errors
     ///
     /// - [`VimmError::Http`] on a 4xx status, after retries are exhausted on
@@ -238,9 +240,14 @@ impl VimmClient {
         referer: &str,
     ) -> Result<StreamingResponse, VimmError> {
         let mut attempt: u32 = 0;
+        let download_timeout = Duration::from_secs(600); // 10 minutes for large downloads
         loop {
             self.enforce_rate_limit().await;
-            match self.http.get(url).header("Referer", referer).send().await {
+            match self.http.get(url)
+                .header("Referer", referer)
+                .timeout(download_timeout)
+                .send()
+                .await {
                 Ok(resp) => {
                     let status = resp.status();
                     if status.is_server_error() && attempt < self.config.max_retries {
