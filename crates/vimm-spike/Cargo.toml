@@ -12,6 +12,10 @@ description = "Live spike to validate dl3.vimm.net download assumptions (issue #
 name = "vimm-spike"
 path = "src/main.rs"
 
+[[bin]]
+name = "list-7z"
+path = "src/list_7z.rs"
+
 [dependencies]
 vimm-core = { workspace = true }
 tokio = { workspace = true }

@@ -145,10 +145,11 @@ vimm-downloader download <id>
 ## Open items (confirmed via spike #9, 2026-07-09)
 
 1. **`dl3.vimm.net` download**: GET request (not POST). The `submitDL()` JS handler changes `method='GET'` before submit. Requires `Referer` header set to the detail page URL (`https://vimm.net/vault/{id}`), browser UA, and cookies from visiting vimm.net first. URL shape: `https://dl3.vimm.net/?mediaId={mediaId}&alt={0|1|2}`.
-2. **Archive format**: Small games (NES/SNES) ship as **ZIP**; large games (GameCube/Wii/PS2) ship as **7z**. Both `sevenz-rust2` and `zip` crates are needed. No other formats observed.
-3. **Inner entry filenames**: Usable as final ROM names (e.g., `Super Mario Bros. (World).nes`, `Super Smash Bros. Melee (USA) (En,Ja).ciso`).
-4. **Junk files**: Every archive contains a `Vimm's Lair.txt` file (266-305 bytes). The blocklist-by-elimination strategy works — `.txt` is in the junk list, ROM files survive.
+2. **Archive format**: Small games (NES/SNES) ship as **ZIP**; large games (PS1/GameCube/Wii/PS2) ship as **7z**. Both `sevenz-rust2` and `zip` crates are needed. No other formats observed.
+3. **Inner entry filenames**: Usable as final ROM names (e.g., `Super Mario Bros. (World).nes`, `Super Smash Bros. Melee (USA) (En,Ja).ciso`). Files may be nested in a subdirectory (e.g., `Tekken 3 (USA)/Tekken 3 (USA) (Track 1).bin`).
+4. **Junk files**: Every archive contains a `Vimm's Lair.txt` file (266-466 bytes). The blocklist-by-elimination strategy works — `.txt` is in the junk list, ROM files survive.
 5. **mediaId ≠ game ID**: The `mediaId` in the download form differs from the URL game ID. Must use the `Media.id` from the detail page's embedded JSON.
+6. **Multi-bin+cue survival**: Verified with Tekken 3 (PS1) — archive contains 3 `.bin` files + 1 `.cue` file + `Vimm's Lair.txt`. All `.bin`/`.cue` files survive junk deletion; only `.txt` is removed.
 
 ---
 
