@@ -48,11 +48,7 @@ impl Config {
     ///
     /// Priority: `cli_flag` > config per-system > site default (empty string).
     #[must_use]
-    pub fn resolve_format<'a>(
-        &'a self,
-        system: &str,
-        cli_flag: Option<&'a str>,
-    ) -> &'a str {
+    pub fn resolve_format<'a>(&'a self, system: &str, cli_flag: Option<&'a str>) -> &'a str {
         if let Some(flag) = cli_flag {
             return flag;
         }
@@ -92,11 +88,14 @@ mod tests {
     #[test]
     fn load_from_valid_toml() {
         let tmp = TempDir::new().unwrap();
-        let path = write_config(tmp.path(), r#"
+        let path = write_config(
+            tmp.path(),
+            r#"
 [formats]
 GameCube = "rvz"
 Wii = "ciso"
-"#);
+"#,
+        );
         let config = Config::load_from_path(&path);
         assert_eq!(config.formats.get("GameCube"), Some(&"rvz".to_string()));
         assert_eq!(config.formats.get("Wii"), Some(&"ciso".to_string()));
@@ -120,10 +119,13 @@ Wii = "ciso"
     #[test]
     fn resolve_format_cli_takes_priority() {
         let tmp = TempDir::new().unwrap();
-        let path = write_config(tmp.path(), r#"
+        let path = write_config(
+            tmp.path(),
+            r#"
 [formats]
 GameCube = "rvz"
-"#);
+"#,
+        );
         let config = Config::load_from_path(&path);
         assert_eq!(config.resolve_format("GameCube", Some("ciso")), "ciso");
     }
@@ -131,10 +133,13 @@ GameCube = "rvz"
     #[test]
     fn resolve_format_config_fallback() {
         let tmp = TempDir::new().unwrap();
-        let path = write_config(tmp.path(), r#"
+        let path = write_config(
+            tmp.path(),
+            r#"
 [formats]
 GameCube = "rvz"
-"#);
+"#,
+        );
         let config = Config::load_from_path(&path);
         assert_eq!(config.resolve_format("GameCube", None), "rvz");
     }
@@ -148,10 +153,13 @@ GameCube = "rvz"
     #[test]
     fn resolve_format_unknown_system() {
         let tmp = TempDir::new().unwrap();
-        let path = write_config(tmp.path(), r#"
+        let path = write_config(
+            tmp.path(),
+            r#"
 [formats]
 GameCube = "rvz"
-"#);
+"#,
+        );
         let config = Config::load_from_path(&path);
         assert_eq!(config.resolve_format("NES", None), "");
     }

@@ -19,9 +19,7 @@ use vimm_core::model::GameDetail;
 const DL3_BASE: &str = "https://dl3.vimm.net";
 
 /// Junk extensions from the blocklist-by-elimination strategy.
-const JUNK_EXTS: &[&str] = &[
-    "txt", "nfo", "diz", "jpg", "jpeg", "png", "html", "url",
-];
+const JUNK_EXTS: &[&str] = &["txt", "nfo", "diz", "jpg", "jpeg", "png", "html", "url"];
 
 /// Companion extensions that must survive junk elimination for CD images.
 const COMPANION_EXTS: &[&str] = &["bin", "cue", "gdi", "iso", "ciso", "rvz", "ciso"];
@@ -48,7 +46,8 @@ const SAMPLE_GAMES: &[SampleGame] = &[
     SampleGame {
         id: 1465,
         label: "PS1 CD Image",
-        description: "Multi-bin+cue CD image — validates companion file survival through junk blocklist",
+        description:
+            "Multi-bin+cue CD image — validates companion file survival through junk blocklist",
     },
     SampleGame {
         id: 7818,
@@ -81,12 +80,16 @@ async fn main() -> anyhow::Result<()> {
         println!("  Media entries: {}", detail.media.len());
 
         for (mi, media) in detail.media.iter().enumerate() {
-            println!("\n  Media[{mi}]: version={} disc={} good_title={}",
-                media.version, media.disc, media.good_title);
+            println!(
+                "\n  Media[{mi}]: version={} disc={} good_title={}",
+                media.version, media.disc, media.good_title
+            );
             println!("    Formats:");
             for fmt in &media.formats {
-                println!("      alt={} key={} label={} size={} bytes",
-                    fmt.alt, fmt.key, fmt.label, fmt.zipped_size_bytes);
+                println!(
+                    "      alt={} key={} label={} size={} bytes",
+                    fmt.alt, fmt.key, fmt.label, fmt.zipped_size_bytes
+                );
             }
 
             if media.formats.is_empty() {
@@ -157,14 +160,19 @@ async fn download_and_inspect(
         .gzip(true)
         .build()?;
 
-    let resp = http.get(&url)
+    let resp = http
+        .get(&url)
         .header("Referer", &referer)
         .send()
         .await?
         .error_for_status()?;
 
     let content_length = resp.content_length();
-    let content_type = resp.headers().get("content-type").and_then(|v| v.to_str().ok()).map(String::from);
+    let content_type = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from);
 
     let data = resp.bytes().await?;
     let actual_len = data.len() as u64;
@@ -238,7 +246,10 @@ fn detect_magic(data: &[u8]) -> String {
         return "too short".to_string();
     }
     let hex = |b: u8| format!("{:02X}", b);
-    let first6: String = (0..6.min(data.len())).map(|i| hex(data[i])).collect::<Vec<_>>().join(" ");
+    let first6: String = (0..6.min(data.len()))
+        .map(|i| hex(data[i]))
+        .collect::<Vec<_>>()
+        .join(" ");
 
     if data.starts_with(SEVENZ_MAGIC) {
         format!("7z ({first6})")
@@ -249,19 +260,29 @@ fn detect_magic(data: &[u8]) -> String {
     }
 }
 
-fn list_archive_entries(path: &Path, archive_type: &ArchiveType, extract_dir: &Path) -> anyhow::Result<Vec<ArchiveEntry>> {
+fn list_archive_entries(
+    path: &Path,
+    archive_type: &ArchiveType,
+    extract_dir: &Path,
+) -> anyhow::Result<Vec<ArchiveEntry>> {
     match archive_type {
         ArchiveType::SevenZ => {
             let mut entries = Vec::new();
             let file = File::open(path)?;
             let extract_path = extract_dir.to_path_buf();
-            sevenz_rust2::decompress_with_extract_fn(file, &extract_path, |entry: &sevenz_rust2::SevenZArchiveEntry, _reader: &mut dyn std::io::Read, _dest: &std::path::PathBuf| {
-                entries.push(ArchiveEntry {
-                    name: entry.name.clone(),
-                    size: entry.size,
-                });
-                Ok(true)
-            })?;
+            sevenz_rust2::decompress_with_extract_fn(
+                file,
+                &extract_path,
+                |entry: &sevenz_rust2::SevenZArchiveEntry,
+                 _reader: &mut dyn std::io::Read,
+                 _dest: &std::path::PathBuf| {
+                    entries.push(ArchiveEntry {
+                        name: entry.name.clone(),
+                        size: entry.size,
+                    });
+                    Ok(true)
+                },
+            )?;
             Ok(entries)
         }
         ArchiveType::Zip => {
@@ -331,9 +352,15 @@ fn print_findings(findings: &[DownloadFinding]) {
         return;
     }
 
-    let all_7z = findings.iter().all(|f| matches!(f.archive_type, ArchiveType::SevenZ));
-    let any_zip = findings.iter().any(|f| matches!(f.archive_type, ArchiveType::Zip));
-    let any_unknown = findings.iter().any(|f| matches!(f.archive_type, ArchiveType::Unknown));
+    let all_7z = findings
+        .iter()
+        .all(|f| matches!(f.archive_type, ArchiveType::SevenZ));
+    let any_zip = findings
+        .iter()
+        .any(|f| matches!(f.archive_type, ArchiveType::Zip));
+    let any_unknown = findings
+        .iter()
+        .any(|f| matches!(f.archive_type, ArchiveType::Unknown));
 
     println!("1. Archive format coverage:");
     println!("   All 7z: {all_7z}");
@@ -366,16 +393,36 @@ fn print_findings(findings: &[DownloadFinding]) {
     println!("\n4. Content-Length accuracy:");
     for f in findings {
         let actual = f.entries.iter().map(|e| e.size).sum::<u64>();
-        println!("   {} (alt={}): reported={:?}, total entries={}",
-            f.game_title, f.alt, f.content_length, actual);
+        println!(
+            "   {} (alt={}): reported={:?}, total entries={}",
+            f.game_title, f.alt, f.content_length, actual
+        );
     }
 
     println!("\n=== Findings for DESIGN.md ===");
-    println!("1. alt parameter: POST with alt=0 returns same content as alt omitted (verify manually)");
-    println!("2. 7z coverage: {} (sevenz-rust2 {} handle this)",
-        if all_7z { "All samples are 7z" } else { "Mixed formats found" },
-        if all_7z { "should" } else { "may need zip fallback" });
-    println!("3. Inner filenames: review entries above — usable as final ROM names: {}",
-        if findings.iter().all(|f| !f.entries.is_empty()) { "Yes" } else { "Check empty entries" });
+    println!(
+        "1. alt parameter: POST with alt=0 returns same content as alt omitted (verify manually)"
+    );
+    println!(
+        "2. 7z coverage: {} (sevenz-rust2 {} handle this)",
+        if all_7z {
+            "All samples are 7z"
+        } else {
+            "Mixed formats found"
+        },
+        if all_7z {
+            "should"
+        } else {
+            "may need zip fallback"
+        }
+    );
+    println!(
+        "3. Inner filenames: review entries above — usable as final ROM names: {}",
+        if findings.iter().all(|f| !f.entries.is_empty()) {
+            "Yes"
+        } else {
+            "Check empty entries"
+        }
+    );
     println!("4. CD companions: review junk/companion lists above for PS1 sample");
 }

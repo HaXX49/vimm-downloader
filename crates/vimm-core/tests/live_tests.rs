@@ -21,7 +21,11 @@ mod live {
         let client = test_client();
         let systems = client.list_systems().await.expect("list_systems");
         assert!(!systems.is_empty(), "should find at least one system");
-        assert!(systems.len() >= 30, "should find ~33 systems, got {}", systems.len());
+        assert!(
+            systems.len() >= 30,
+            "should find ~33 systems, got {}",
+            systems.len()
+        );
     }
 
     #[tokio::test]
@@ -44,7 +48,10 @@ mod live {
             ..Default::default()
         };
         let results = client.search(&query).await.expect("search");
-        assert!(!results.is_empty(), "should find at least one Final Fantasy game");
+        assert!(
+            !results.is_empty(),
+            "should find at least one Final Fantasy game"
+        );
     }
 
     #[tokio::test]

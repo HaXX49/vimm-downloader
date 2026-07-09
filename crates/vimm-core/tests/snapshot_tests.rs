@@ -55,7 +55,10 @@ mod tests {
     fn snapshot_systems() {
         let html = fs::read_to_string(fixture_path("vault_home.html")).unwrap();
         let systems = vimm_core::systems::parse(&html);
-        assert_snapshot("systems.json", &serde_json::to_string_pretty(&systems).unwrap());
+        assert_snapshot(
+            "systems.json",
+            &serde_json::to_string_pretty(&systems).unwrap(),
+        );
     }
 
     #[test]

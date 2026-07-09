@@ -97,7 +97,9 @@ fn extract_sevenz(path: &Path, out_dir: &Path) -> Result<(), VimmError> {
 fn extract_zip(path: &Path, out_dir: &Path) -> Result<(), VimmError> {
     let file = fs::File::open(path).map_err(VimmError::from)?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| VimmError::Archive(e.to_string()))?;
-    archive.extract(out_dir).map_err(|e| VimmError::Archive(e.to_string()))?;
+    archive
+        .extract(out_dir)
+        .map_err(|e| VimmError::Archive(e.to_string()))?;
     Ok(())
 }
 
@@ -107,10 +109,7 @@ fn collect_extracted_files(dir: &Path) -> Result<Vec<PathBuf>, VimmError> {
     Ok(files)
 }
 
-fn collect_files_recursive(
-    dir: &Path,
-    files: &mut Vec<PathBuf>,
-) -> Result<(), VimmError> {
+fn collect_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), VimmError> {
     for entry in fs::read_dir(dir).map_err(VimmError::from)? {
         let entry = entry.map_err(VimmError::from)?;
         let path = entry.path();
@@ -238,7 +237,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("test.7z");
         fs::write(&path, SEVENZ_MAGIC).unwrap();
-        assert!(matches!(detect_format(&path).unwrap(), ArchiveFormat::SevenZ));
+        assert!(matches!(
+            detect_format(&path).unwrap(),
+            ArchiveFormat::SevenZ
+        ));
     }
 
     #[test]

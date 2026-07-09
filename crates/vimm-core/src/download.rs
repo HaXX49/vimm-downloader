@@ -47,9 +47,7 @@ pub async fn download_rom(
     dest: &Path,
     mut progress: Option<ProgressCallback>,
 ) -> Result<PathBuf, VimmError> {
-    let url = format!(
-        "https://dl3.vimm.net/?mediaId={media_id}&alt={alt}"
-    );
+    let url = format!("https://dl3.vimm.net/?mediaId={media_id}&alt={alt}");
     let referer = format!("https://vimm.net/vault/{game_id}");
 
     let resp = client.get_stream(&url, &referer).await?;
@@ -59,9 +57,7 @@ pub async fn download_rom(
     let tmp_path = dest.join(format!("{stem}.tmp"));
     let final_path = dest.join(format!("{stem}.archive"));
 
-    let mut file = File::create(&tmp_path)
-        .await
-        .map_err(VimmError::from)?;
+    let mut file = File::create(&tmp_path).await.map_err(VimmError::from)?;
 
     let mut downloaded = 0u64;
     let mut next_report = 0u64;

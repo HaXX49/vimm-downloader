@@ -37,7 +37,8 @@ pub fn parse(html: &str, query: &SearchQuery) -> Vec<GameSummary> {
             // Live site uses 5 columns for per-system: Title | Region | Version | Languages | Rating
             // Live site uses 6 columns for all-system: System | Title | Region | Version | Languages
             // Fixtures may have different layouts; detect by column count and content.
-            let has_system_col = tds.len() >= 6 || (tds.len() == 5 && tds[0].select(&link_sel).next().is_none());
+            let has_system_col =
+                tds.len() >= 6 || (tds.len() == 5 && tds[0].select(&link_sel).next().is_none());
             if tds.len() < 5 {
                 return None;
             }
@@ -46,13 +47,14 @@ pub fn parse(html: &str, query: &SearchQuery) -> Vec<GameSummary> {
             // Per-system (5 cols): Title(0) | Region(1) | Version(2) | Languages(3) | Rating(4)
             // All-system (6 cols): System(0) | Title(1) | Region(2) | Version(3) | Languages(4)
             // All-system (5 cols fixture): System(0) | Title(1) | Region(2) | Version(3) | Languages(4)
-            let (title_idx, region_idx, version_idx, languages_idx, rating_idx, system_idx) = if has_system_col {
-                // All-system: no rating column
-                (1, 2, 3, 4, None, Some(0))
-            } else {
-                // Per-system: has rating
-                (0, 1, 2, 3, Some(4), None)
-            };
+            let (title_idx, region_idx, version_idx, languages_idx, rating_idx, system_idx) =
+                if has_system_col {
+                    // All-system: no rating column
+                    (1, 2, 3, 4, None, Some(0))
+                } else {
+                    // Per-system: has rating
+                    (0, 1, 2, 3, Some(4), None)
+                };
 
             let title_td = &tds[title_idx];
 
@@ -92,7 +94,11 @@ pub fn parse(html: &str, query: &SearchQuery) -> Vec<GameSummary> {
                 .collect();
 
             // Version column.
-            let version = tds[version_idx].text().collect::<String>().trim().to_string();
+            let version = tds[version_idx]
+                .text()
+                .collect::<String>()
+                .trim()
+                .to_string();
 
             // Languages column (comma-separated, "-" → empty).
             let languages: Vec<String> = tds[languages_idx]

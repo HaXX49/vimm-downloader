@@ -135,12 +135,22 @@ async fn main() -> anyhow::Result<()> {
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&results)?);
             } else {
-                println!("{:<6}  {:<40}  {:<10}  {:<8}  RATING", "ID", "TITLE", "SYSTEM", "VERSION");
+                println!(
+                    "{:<6}  {:<40}  {:<10}  {:<8}  RATING",
+                    "ID", "TITLE", "SYSTEM", "VERSION"
+                );
                 for g in &results {
                     let rating = g.rating.map_or("-".to_string(), |r| format!("{:.1}", r));
-                    println!("{:<6}  {:<40}  {:<10}  {:<8}  {}", g.id, g.title, g.system, g.version, rating);
+                    println!(
+                        "{:<6}  {:<40}  {:<10}  {:<8}  {}",
+                        g.id, g.title, g.system, g.version, rating
+                    );
                 }
-                println!("\n{} result(s) (showing {} of {total})", results.len(), results.len());
+                println!(
+                    "\n{} result(s) (showing {} of {total})",
+                    results.len(),
+                    results.len()
+                );
             }
         }
         Command::Info { id } => {
@@ -157,10 +167,14 @@ async fn main() -> anyhow::Result<()> {
                 println!("Year: {}", detail.year);
                 println!("Publisher: {}", detail.publisher);
                 println!("Serial: {}", detail.serial);
-                println!("Ratings: G={:.1} S={:.1} GP={:.1} O={:.1} ({} votes)",
-                    detail.ratings.graphics, detail.ratings.sound,
-                    detail.ratings.gameplay, detail.ratings.overall,
-                    detail.ratings.votes);
+                println!(
+                    "Ratings: G={:.1} S={:.1} GP={:.1} O={:.1} ({} votes)",
+                    detail.ratings.graphics,
+                    detail.ratings.sound,
+                    detail.ratings.gameplay,
+                    detail.ratings.overall,
+                    detail.ratings.votes
+                );
                 if !detail.verified_date.is_empty() {
                     println!("Verified: {}", detail.verified_date);
                 }
@@ -174,13 +188,17 @@ async fn main() -> anyhow::Result<()> {
                     }
                     println!("    Formats:");
                     for fmt in &media.formats {
-                        println!("      alt={} key={} label={} size={}",
-                            fmt.alt, fmt.key, fmt.label,
+                        println!(
+                            "      alt={} key={} label={} size={}",
+                            fmt.alt,
+                            fmt.key,
+                            fmt.label,
                             if fmt.zipped_size_bytes > 0 {
                                 format!("{} KB", fmt.zipped_size_bytes / 1024)
                             } else {
                                 "N/A".to_string()
-                            });
+                            }
+                        );
                     }
                 }
             }
@@ -211,7 +229,11 @@ async fn main() -> anyhow::Result<()> {
             let fmt = if resolved_format.is_empty() {
                 &media.formats[0]
             } else {
-                media.formats.iter().find(|f| f.key == resolved_format).unwrap_or(&media.formats[0])
+                media
+                    .formats
+                    .iter()
+                    .find(|f| f.key == resolved_format)
+                    .unwrap_or(&media.formats[0])
             };
             eprintln!(
                 "Downloading: {} ({} format: {})",
@@ -221,9 +243,7 @@ async fn main() -> anyhow::Result<()> {
             let progress_bar = if cli.json {
                 None
             } else {
-                let bar = indicatif::ProgressBar::new(
-                    fmt.zipped_size_bytes,
-                );
+                let bar = indicatif::ProgressBar::new(fmt.zipped_size_bytes);
                 bar.set_style(
                     indicatif::ProgressStyle::default_bar()
                         .template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")?
@@ -247,7 +267,8 @@ async fn main() -> anyhow::Result<()> {
                         if let Some(t) = total {
                             bar.set_length(t);
                         }
-                    }) as Box<dyn FnMut(u64, Option<u64>) + Send>)
+                    })
+                        as Box<dyn FnMut(u64, Option<u64>) + Send>)
                 },
             )
             .await?;
@@ -280,7 +301,8 @@ async fn main() -> anyhow::Result<()> {
                 let files = vimm_core::extract(&path, out, opts)?;
 
                 if cli.json {
-                    let file_paths: Vec<_> = files.iter()
+                    let file_paths: Vec<_> = files
+                        .iter()
                         .map(|f| f.to_string_lossy().to_string())
                         .collect();
                     println!(

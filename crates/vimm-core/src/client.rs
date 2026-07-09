@@ -243,11 +243,14 @@ impl VimmClient {
         let download_timeout = Duration::from_secs(600); // 10 minutes for large downloads
         loop {
             self.enforce_rate_limit().await;
-            match self.http.get(url)
+            match self
+                .http
+                .get(url)
                 .header("Referer", referer)
                 .timeout(download_timeout)
                 .send()
-                .await {
+                .await
+            {
                 Ok(resp) => {
                     let status = resp.status();
                     if status.is_server_error() && attempt < self.config.max_retries {
