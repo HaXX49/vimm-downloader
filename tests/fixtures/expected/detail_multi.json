@@ -1,0 +1,85 @@
+{
+  "id": 7818,
+  "system": "",
+  "title": "Armored Core",
+  "region": "USA",
+  "players": 1,
+  "simultaneous": false,
+  "year": 1997,
+  "publisher": "FromSoftware",
+  "serial": "SLUS-00001",
+  "ratings": {
+    "graphics": 8.0,
+    "sound": 7.5,
+    "gameplay": 8.5,
+    "overall": 8.0,
+    "votes": 230
+  },
+  "verified_date": "2024-06-15",
+  "media": [
+    {
+      "id": 9876,
+      "version": "1.0",
+      "disc": 1,
+      "good_title": "Armored Core (USA).iso",
+      "serial": "SLUS-00001",
+      "verified_date": "2024-06-15",
+      "formats": [
+        {
+          "key": "ciso",
+          "label": ".ciso",
+          "description": "Compressed ISO",
+          "alt": 0,
+          "zipped_size_bytes": 350000
+        },
+        {
+          "key": "nkit.iso",
+          "label": ".nkit.iso",
+          "description": "NKit compressed ISO",
+          "alt": 1,
+          "zipped_size_bytes": 320000
+        },
+        {
+          "key": "rvz",
+          "label": ".rvz",
+          "description": "Dolphin compressed RVZ",
+          "alt": 2,
+          "zipped_size_bytes": 310000
+        }
+      ]
+    },
+    {
+      "id": 9877,
+      "version": "1.1",
+      "disc": 2,
+      "good_title": "Armored Core (USA) (v1.1).iso",
+      "serial": "SLUS-00001",
+      "verified_date": "2024-06-15",
+      "formats": [
+        {
+          "key": "ciso",
+          "label": ".ciso",
+          "description": "Compressed ISO",
+          "alt": 0,
+          "zipped_size_bytes": 355000
+        },
+        {
+          "key": "nkit.iso",
+          "label": ".nkit.iso",
+          "description": "NKit compressed ISO",
+          "alt": 1,
+          "zipped_size_bytes": 325000
+        },
+        {
+          "key": "rvz",
+          "label": ".rvz",
+          "description": "Dolphin compressed RVZ",
+          "alt": 2,
+          "zipped_size_bytes": 315000
+        }
+      ]
+    }
+  ],
+  "selected_version": "1.0",
+  "selected_disc": "1"
+}

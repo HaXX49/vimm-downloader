@@ -1,0 +1,40 @@
+{
+  "id": 834,
+  "system": "",
+  "title": "Super Mario Bros.",
+  "region": "USA",
+  "players": 2,
+  "simultaneous": false,
+  "year": 1985,
+  "publisher": "Nintendo",
+  "serial": "NES-SM-USA",
+  "ratings": {
+    "graphics": 7.2,
+    "sound": 8.3,
+    "gameplay": 9.1,
+    "overall": 8.8,
+    "votes": 145
+  },
+  "verified_date": "2024-01-01",
+  "media": [
+    {
+      "id": 834,
+      "version": "1.0",
+      "disc": 1,
+      "good_title": "Super Mario Bros. (USA)",
+      "serial": "NES-SM-USA",
+      "verified_date": "2024-01-01",
+      "formats": [
+        {
+          "key": "nes",
+          "label": ".nes",
+          "description": "",
+          "alt": 0,
+          "zipped_size_bytes": 21874
+        }
+      ]
+    }
+  ],
+  "selected_version": "1.0",
+  "selected_disc": "1"
+}
