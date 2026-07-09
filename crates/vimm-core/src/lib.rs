@@ -10,12 +10,14 @@
 
 pub mod client;
 pub mod detail;
+pub mod download;
 pub mod error;
 pub mod model;
 pub mod search;
 pub mod systems;
 
 pub use client::{ClientConfig, StreamingResponse, VimmClient};
+pub use download::download_rom;
 pub use error::VimmError;
 pub use model::{
     ExtraFlag, Format, GameDetail, GameSummary, Media, Op, Order, Ratings, SearchMode, SearchQuery,

@@ -221,6 +221,52 @@ impl VimmClient {
         }
     }
 
+    /// GET `url` with a custom `Referer` header and return the response as a stream.
+    ///
+    /// Used for dl3.vimm.net downloads (spike #9 confirmed GET + Referer).
+    /// Retries on 5xx status (and retryable network errors) up to
+    /// `1 + max_retries` total attempts, then hands the 2xx body to the
+    /// caller via [`StreamingResponse`].
+    ///
+    /// # Errors
+    ///
+    /// - [`VimmError::Http`] on a 4xx status, after retries are exhausted on
+    ///   a 5xx, or on a non-retryable transport error.
+    pub async fn get_stream(
+        &self,
+        url: &str,
+        referer: &str,
+    ) -> Result<StreamingResponse, VimmError> {
+        let mut attempt: u32 = 0;
+        loop {
+            self.enforce_rate_limit().await;
+            match self.http.get(url).header("Referer", referer).send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if status.is_server_error() && attempt < self.config.max_retries {
+                        attempt += 1;
+                        self.backoff(attempt).await;
+                        continue;
+                    }
+                    let resp = resp.error_for_status().map_err(VimmError::from)?;
+                    let content_length = resp.content_length();
+                    return Ok(StreamingResponse {
+                        content_length,
+                        body: Some(resp),
+                    });
+                }
+                Err(e) => {
+                    if is_retryable(&e) && attempt < self.config.max_retries {
+                        attempt += 1;
+                        self.backoff(attempt).await;
+                        continue;
+                    }
+                    return Err(VimmError::from(e));
+                }
+            }
+        }
+    }
+
     /// Sleep as needed so successive request starts are at least
     /// `min_request_interval` apart.
     async fn enforce_rate_limit(&self) {
