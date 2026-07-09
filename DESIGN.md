@@ -346,10 +346,10 @@ vimm-downloader download <id>
 - Summary: Build a synthetic 7z (rom + junk) at test time; assert junk-by-elimination keeps ROM, removes junk.
 - Problem statement: Extraction/junk-removal is the riskiest file logic and must be tested without real ROM downloads.
 - Acceptance criteria:
-  - [ ] Test builds 7z with `game.nes` + `readme.txt` + `cover.jpg`
-  - [ ] Asserts: `game.nes` exists, junk deleted, archive deleted
-  - [ ] `--keep-extras` path: junk retained
-  - [ ] `--archive` path: 7z kept, no extraction
+  - [x] Test builds 7z with `game.nes` + `readme.txt` + `cover.jpg`
+  - [x] Asserts: `game.nes` exists, junk deleted, archive deleted
+  - [x] `--keep-extras` path: junk retained
+  - [x] `--archive` path: 7z kept, no extraction
 - Resources: Locked design → Extraction rule. Depends on: #8.
 
 **#14 — Live integration flag + release profile + cross-compile**
@@ -357,8 +357,8 @@ vimm-downloader download <id>
 - Summary: Gate network tests behind `--features live`, finalize release profile, document cross-compile targets.
 - Problem statement: Live tests must stay out of CI but be available manually; CLI must ship as a small static binary on Linux/macOS/Windows.
 - Acceptance criteria:
-  - [ ] `#[cfg(feature = "live")]` integration tests (run with `cargo test --features live`)
-  - [ ] Release profile confirmed: `lto=true, codegen-units=1, strip=true`
-  - [ ] Documented cross-compile: `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`
-  - [ ] Binary size recorded in README/release notes
+  - [x] `#[cfg(feature = "live")]` integration tests (run with `cargo test --features live`)
+  - [x] Release profile confirmed: `lto=true, codegen-units=1, strip=true`
+  - [x] Documented cross-compile: `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`
+  - [x] Binary size recorded: 6.5 MB on `aarch64-apple-darwin` (release)
 - Resources: Locked design → Build/CI. Depends on: all.

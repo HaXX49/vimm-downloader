@@ -256,4 +256,74 @@ mod tests {
         fs::write(&path, b"NOT_AN_ARCHIVE").unwrap();
         assert!(detect_format(&path).is_err());
     }
+
+    fn create_test_sevenz(dir: &Path) -> PathBuf {
+        // Create source files in a subdirectory.
+        let src = dir.join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("game.nes"), b"ROM_DATA").unwrap();
+        fs::write(src.join("readme.txt"), b"Read me!").unwrap();
+        fs::write(src.join("cover.jpg"), b"JPEG_DATA").unwrap();
+
+        let archive_path = dir.join("test.7z");
+        sevenz_rust2::compress_to_path(&src, &archive_path).unwrap();
+        archive_path
+    }
+
+    #[test]
+    fn extract_sevenz_removes_junk() {
+        let tmp = setup_test_dir();
+        let out_dir = tmp.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let archive = create_test_sevenz(tmp.path());
+        let files = extract(&archive, &out_dir, ExtractOptions::default()).unwrap();
+
+        assert!(files.iter().any(|f| f.file_name().unwrap() == "game.nes"));
+        assert!(!files.iter().any(|f| f.file_name().unwrap() == "readme.txt"));
+        assert!(!files.iter().any(|f| f.file_name().unwrap() == "cover.jpg"));
+        assert!(!archive.exists());
+    }
+
+    #[test]
+    fn extract_sevenz_keep_extras() {
+        let tmp = setup_test_dir();
+        let out_dir = tmp.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let archive = create_test_sevenz(tmp.path());
+        let files = extract(
+            &archive,
+            &out_dir,
+            ExtractOptions {
+                keep_extras: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(files.iter().any(|f| f.file_name().unwrap() == "game.nes"));
+        assert!(files.iter().any(|f| f.file_name().unwrap() == "readme.txt"));
+        assert!(files.iter().any(|f| f.file_name().unwrap() == "cover.jpg"));
+    }
+
+    #[test]
+    fn extract_sevenz_keep_archive() {
+        let tmp = setup_test_dir();
+        let out_dir = tmp.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+
+        let archive = create_test_sevenz(tmp.path());
+        extract(
+            &archive,
+            &out_dir,
+            ExtractOptions {
+                keep_archive: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert!(archive.exists());
+    }
 }
