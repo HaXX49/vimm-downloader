@@ -26,6 +26,8 @@ A portable CLI downloader for Vimm's Lair Vault (retro game ROM archive). Pure a
 - Use offline HTML fixtures in `tests/fixtures/` for parser tests
 
 ### Git Workflow
+- Work on each issue in a dedicated branch named `issue-<N>/<short-description>` (e.g. `issue-8/archive-extraction`)
+- Branch off `main`, merge back via PR after review
 - One commit per logical change with descriptive message
 - Push to `origin/main` after each completed issue
 - Delete feature branches after merge
