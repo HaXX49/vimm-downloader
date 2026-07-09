@@ -265,15 +265,15 @@ vimm-downloader download <id>
 
 **#7 — Download streaming with progress**
 - Theme: Streaming I/O & progress reporting
-- Summary: `GET dl3.vimm.net/?mediaId={id}&alt={N}` with Referer header, stream to `.{stem}.tmp` with indicatif progress.
+- Summary: `GET dl3.vimm.net/?mediaId={id}&alt={N}` with Referer header, stream to `.tmp` with indicatif progress.
 - Problem statement: ROMs range KB → ~1GB; must stream to disk (not buffer), with live progress and resumable `.tmp` naming. `alt` selects the format variant.
 - Acceptance criteria:
-  - [ ] `VimmClient::download(media_id, alt, game_id, dest, progress_cb)` streams to `.tmp`
-  - [ ] Uses GET request with Referer header set to `vimm.net/vault/{game_id}`
-  - [ ] Uses `Content-Length` for progress; indeterminate bar fallback
-  - [ ] indicatif bar in CLI; progress callback hook in core (for bindings)
-  - [ ] Atomic rename on success; cleanup `.tmp` on error
-  - [ ] Honors rate limit + retry on the GET request
+  - [x] `download_rom(client, media_id, alt, game_id, dest, progress_cb)` streams to `.tmp`
+  - [x] Uses GET request with Referer header set to `vimm.net/vault/{game_id}`
+  - [x] Uses `Content-Length` for progress; indeterminate bar fallback
+  - [x] indicatif bar in CLI; progress callback hook in core (for bindings)
+  - [x] Atomic rename on success; cleanup `.tmp` on error
+  - [x] Honors rate limit + retry on the GET request
 - Resources: Locked design → Download pipeline. Depends on: #3, #6, #9.
 
 **#8 — Archive extraction + junk removal**
