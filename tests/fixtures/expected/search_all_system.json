@@ -1,0 +1,32 @@
+[
+  {
+    "id": 9876,
+    "title": "Armored Core",
+    "system": "PS1",
+    "regions": [
+      "USA",
+      "Japan"
+    ],
+    "version": "1.0",
+    "languages": [
+      "En",
+      "Ja"
+    ],
+    "extras": [],
+    "rating": null
+  },
+  {
+    "id": 9877,
+    "title": "Armored Core 2",
+    "system": "PS2",
+    "regions": [
+      "USA"
+    ],
+    "version": "1.0",
+    "languages": [
+      "En"
+    ],
+    "extras": [],
+    "rating": null
+  }
+]

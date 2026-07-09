@@ -335,10 +335,10 @@ vimm-downloader download <id>
 - Summary: Save representative HTML fixtures + snapshot tests for systems/search/detail parsers; CI runs fully offline.
 - Problem statement: CI must not hit vimm.net; parsers need regression protection as site HTML evolves.
 - Acceptance criteria:
-  - [ ] Fixtures in `tests/fixtures/`: `vault_home.html`, `nes_list.html`, `armored_core_all.html`, `game_834.html`, `game_7818.html`
-  - [ ] Snapshot tests (insta or hand-rolled) for systems, both search schemas, single- + multi-format detail
-  - [ ] All pass with `cargo test` (no network)
-  - [ ] Document how to refresh fixtures
+  - [x] Fixtures in `tests/fixtures/`: `vault_home.html`, `nes_list.html`, `armored_core_all.html`, `game_834.html`, `game_7818.html`
+  - [x] Snapshot tests for systems, both search schemas, single- + multi-format detail
+  - [x] All pass with `cargo test` (no network)
+  - [x] Document how to refresh fixtures (`UPDATE_SNAPSHOTS=1 cargo test`)
 - Resources: Pages fetched during design. Depends on: #4, #5, #6.
 
 **#13 — Synthetic 7z extraction test**

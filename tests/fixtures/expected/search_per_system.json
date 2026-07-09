@@ -1,0 +1,34 @@
+[
+  {
+    "id": 834,
+    "title": "Super Mario Bros.",
+    "system": "NES",
+    "regions": [
+      "USA"
+    ],
+    "version": "1.0",
+    "languages": [
+      "En"
+    ],
+    "extras": [],
+    "rating": 8.8
+  },
+  {
+    "id": 7818,
+    "title": "Super Mario Bros. 3",
+    "system": "NES",
+    "regions": [
+      "USA",
+      "Japan"
+    ],
+    "version": "1.0",
+    "languages": [
+      "En",
+      "Ja"
+    ],
+    "extras": [
+      "Bonus"
+    ],
+    "rating": 9.5
+  }
+]
