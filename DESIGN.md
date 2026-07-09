@@ -321,11 +321,11 @@ vimm-downloader download <id>
 - Summary: Load `~/.config/vimm-downloader/config.toml`; apply `[formats] System="key"` with order CLI flag > config > site default.
 - Problem statement: Users want to persist a preferred format per system instead of passing `--format` each time; resolution must be deterministic.
 - Acceptance criteria:
-  - [ ] `Config::load()` reads config dir (overridable via `--config`)
-  - [ ] Parses `[formats]` map (slug → format key)
-  - [ ] `resolve_format(system, cli_flag, config)` implements CLI > config > site-default
-  - [ ] Missing/malformed config = soft warning, not hard error
-  - [ ] Unit tests for resolution order
+  - [x] `Config::load()` reads config dir (overridable via `--config`)
+  - [x] Parses `[formats]` map (slug → format key)
+  - [x] `resolve_format(system, cli_flag, config)` implements CLI > config > site-default
+  - [x] Missing/malformed config = soft warning, not hard error
+  - [x] Unit tests for resolution order
 - Resources: Locked design → Config. Depends on: #6, #10.
 
 ### M5 — Testing & Polish
