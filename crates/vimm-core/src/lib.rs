@@ -8,6 +8,7 @@
 #![warn(clippy::all, clippy::pedantic)]
 #![allow(clippy::doc_markdown)]
 
+pub mod archive;
 pub mod client;
 pub mod detail;
 pub mod download;
@@ -16,6 +17,7 @@ pub mod model;
 pub mod search;
 pub mod systems;
 
+pub use archive::{extract, ExtractOptions};
 pub use client::{ClientConfig, StreamingResponse, VimmClient};
 pub use download::download_rom;
 pub use error::VimmError;

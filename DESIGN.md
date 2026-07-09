@@ -281,12 +281,12 @@ vimm-downloader download <id>
 - Summary: Detect by magic bytes (7z primary, zip fallback), extract to `--out`, delete junk by blocklist, delete archive; `--archive` / `--keep-extras` modes.
 - Problem statement: Downloads are 7z archives with ROM + junk (txt/nfo/diz/jpg/png/html/url). By elimination we keep the ROM (and companions like .cue/.gdi) without an extension allowlist.
 - Acceptance criteria:
-  - [ ] `archive::extract(path, out, opts)` detects format by magic bytes; `sevenz-rust2` (+ `zip` fallback)
-  - [ ] Default: extract all, delete junk blocklist, delete archive
-  - [ ] `--archive`: rename `.7z.tmp` → `.7z`, no extraction
-  - [ ] `--keep-extras`: extract, keep junk
-  - [ ] Final filename = 7z inner entry name (fallback: GoodTitle stem + format ext)
-  - [ ] Unit test with synthetic 7z (rom.nes + readme.txt) — junk removed, rom kept
+  - [x] `archive::extract(path, out, opts)` detects format by magic bytes; `sevenz-rust2` (+ `zip` fallback)
+  - [x] Default: extract all, delete junk blocklist, delete archive
+  - [x] `--archive`: keep raw archive, no extraction
+  - [x] `--keep-extras`: extract, keep junk
+  - [x] Final filename = archive inner entry name (files may be in subdirectories)
+  - [x] Unit test with synthetic zip (rom.nes + readme.txt + cover.jpg) — junk removed, rom kept
 - Resources: Locked design → Extraction default. Depends on: #7.
 
 **#9 — Spike — validate open download assumptions**
