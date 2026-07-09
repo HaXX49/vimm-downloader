@@ -1,0 +1,22 @@
+[package]
+name = "vimm-spike"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Live spike to validate dl3.vimm.net download assumptions (issue #9)"
+
+[[bin]]
+name = "vimm-spike"
+path = "src/main.rs"
+
+[dependencies]
+vimm-core = { workspace = true }
+tokio = { workspace = true }
+bytes = { workspace = true }
+sevenz-rust2 = { workspace = true }
+zip = { workspace = true }
+anyhow = { workspace = true }
+tempfile = "3"

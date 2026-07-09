@@ -4,6 +4,7 @@ members = [
     "crates/vimm-core",
     "crates/vimm-cli",
     "crates/vimm-bindings",
+    "crates/vimm-spike",
 ]
 
 [workspace.package]
