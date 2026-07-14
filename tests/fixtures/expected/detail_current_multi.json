@@ -1,0 +1,54 @@
+{
+  "id": 7478,
+  "system": "GameCube",
+  "title": "Legend of Zelda, The: The Wind Waker",
+  "region": "USA, Canada",
+  "players": 1,
+  "simultaneous": false,
+  "year": 2003,
+  "publisher": "",
+  "serial": "DOL-GZLE-USA",
+  "ratings": {
+    "graphics": 8.6,
+    "sound": 8.7,
+    "gameplay": 8.5,
+    "overall": 8.1,
+    "votes": 128
+  },
+  "verified_date": "2026-07-13",
+  "media": [
+    {
+      "id": 6257,
+      "version": "1.0",
+      "disc": 1,
+      "good_title": "Legend of Zelda, The - The Wind Waker (USA, Canada).iso",
+      "serial": "DOL-GZLE-USA",
+      "verified_date": "2026-07-13",
+      "formats": [
+        {
+          "key": "ciso",
+          "label": ".ciso",
+          "description": ".ciso files work on hardware and emulators (Dolphin)",
+          "alt": 0,
+          "zipped_size_bytes": 748356608
+        },
+        {
+          "key": "nkit.iso",
+          "label": ".nkit.iso",
+          "description": ".nkit.iso files only work on hardware",
+          "alt": 1,
+          "zipped_size_bytes": 747793408
+        },
+        {
+          "key": "rvz",
+          "label": ".rvz",
+          "description": ".rvz files only work in Dolphin",
+          "alt": 2,
+          "zipped_size_bytes": 748653568
+        }
+      ]
+    }
+  ],
+  "selected_version": "1.0",
+  "selected_disc": "1"
+}

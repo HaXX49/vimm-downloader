@@ -114,6 +114,26 @@ mod tests {
         );
     }
 
+    #[test]
+    fn snapshot_detail_current_single_format() {
+        let html = fs::read_to_string(fixture_path("game_5625_current.html")).unwrap();
+        let detail = vimm_core::detail::parse(&html, 5625).unwrap();
+        assert_snapshot(
+            "detail_current_single.json",
+            &serde_json::to_string_pretty(&detail).unwrap(),
+        );
+    }
+
+    #[test]
+    fn snapshot_detail_current_multi_format() {
+        let html = fs::read_to_string(fixture_path("game_7478_current.html")).unwrap();
+        let detail = vimm_core::detail::parse(&html, 7478).unwrap();
+        assert_snapshot(
+            "detail_current_multi.json",
+            &serde_json::to_string_pretty(&detail).unwrap(),
+        );
+    }
+
     /// Run with `UPDATE_SNAPSHOTS=1 cargo test snapshot_refresh -- --ignored`
     /// to regenerate all snapshots.
     #[test]
@@ -124,5 +144,7 @@ mod tests {
         snapshot_search_all_system();
         snapshot_detail_single_format();
         snapshot_detail_multi_format();
+        snapshot_detail_current_single_format();
+        snapshot_detail_current_multi_format();
     }
 }

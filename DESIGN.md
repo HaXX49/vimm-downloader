@@ -363,6 +363,22 @@ vimm-downloader download <id>
   - [x] Binary size recorded: 6.5 MB on `aarch64-apple-darwin` (release)
 - Resources: Locked design → Build/CI. Depends on: all.
 
+**#27 — Fix info parsing for current detail pages**
+- Theme: Parser compatibility and CLI presentation
+- Summary: Support Vimm's current detail-table and media JSON schemas while retaining legacy fixtures; correct format sizes and unavailable-value output.
+- Findings:
+  - Current titles are available through Open Graph metadata and a base64 canvas; the system slug is available from the active Vault submenu link.
+  - Current metadata uses an unclassed three-column table and separate rating rows.
+  - `GoodDate` replaced `VerifiedDate`; `Zipped`/`AltZipped`/`AltZipped2` are scalar KiB values corresponding to numeric alt options 0/1/2.
+- Acceptance criteria:
+  - [x] Parses current title, system, regions, players, year, ratings, serial, and date
+  - [x] Retains compatibility with legacy single- and multi-format fixtures
+  - [x] Maps current format labels to stable keys and correct alt values
+  - [x] Converts Vimm's KiB sizes to bytes
+  - [x] Human `info` output shows `N/A` for unavailable values and readable sizes
+  - [x] Current-markup parser and snapshot tests remain fully offline
+- Resources: Live pages `/vault/5625` and `/vault/7478`, captured 2026-07-14.
+
 **#29 — Prevent archive cleanup from deleting unrelated output files**
 - Theme: Extraction safety
 - Summary: Extract and filter inside an output-local staging directory, then publish retained files without overwriting existing destinations.

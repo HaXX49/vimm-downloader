@@ -1,0 +1,40 @@
+{
+  "id": 5625,
+  "system": "GBA",
+  "title": "Pokemon: Emerald Version",
+  "region": "USA, Europe",
+  "players": 1,
+  "simultaneous": false,
+  "year": 2005,
+  "publisher": "",
+  "serial": "",
+  "ratings": {
+    "graphics": 8.62,
+    "sound": 8.74,
+    "gameplay": 8.93,
+    "overall": 8.81,
+    "votes": 69
+  },
+  "verified_date": "2026-06-30",
+  "media": [
+    {
+      "id": 4458,
+      "version": "1.0",
+      "disc": 1,
+      "good_title": "Pokemon - Emerald Version (USA, Europe).gba",
+      "serial": "",
+      "verified_date": "2026-06-30",
+      "formats": [
+        {
+          "key": "GBA",
+          "label": ".GBA",
+          "description": "",
+          "alt": 0,
+          "zipped_size_bytes": 6791168
+        }
+      ]
+    }
+  ],
+  "selected_version": "1.0",
+  "selected_disc": "1"
+}
