@@ -2730,6 +2730,7 @@ dependencies = [
  "clap",
  "indicatif",
  "serde_json",
+ "tempfile",
  "tokio",
  "vimm-core",
 ]
