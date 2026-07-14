@@ -70,7 +70,7 @@ No checksum fields exposed in v1 (verification deferred).
 
 - **Systems**: parse `/vault` `#subMenu` links `/vault/{slug}` + `title="Launched …"` → slug, name, launch year.
 - **Search**: `GET /vault/?p=list&…` → parse results `<table>`; skip decoy `/vault/999999` href; real `/vault/{id}`; region from `<img class="flag" title>`. Detect schema by first `<th>`: `System` → all-system (drops Rating), `Title` → per-system.
-- **Detail**: `GET /vault/{id}` → extract `let media=[…]` JSON via regex + serde_json; decode base64 `GoodTitle`; build `formats` from `Mirror[]` + `Zipped/AltZipped/AltZipped2` by index; synthesize single format when `#dl_format` absent. Parse `#dl_version` (incl. `selected`), `#disc_number`, `#dl_format` options (label+title) and metadata `<table>`.
+- **Detail**: `GET /vault/{id}` → extract `let media=[…]` JSON via regex + serde_json; decode base64 `GoodTitle`; read current `GoodDate` and legacy `VerifiedDate`; map numeric `#dl_format` values to alt indices; convert scalar or array `Zipped`/`AltZipped`/`AltZipped2` values from KiB to bytes; synthesize a single format when `#dl_format` is absent. Parse version/disc/format selects and the current or legacy metadata table.
 
 ## Download pipeline (7z/zip, extract by elimination)
 
@@ -80,13 +80,17 @@ GET dl3.vimm.net/?mediaId={id}&alt={0|1|2}  (Referer: vimm.net/vault/{gameId})
   │
   ├─ --archive: rename → {stem}.{ext}                          ✓ done
   └─ else: detect by magic bytes (7z primary, zip fallback)
-           extract all entries to {out}/
-           delete junk by blocklist (txt nfo diz jpg jpeg png html url)   ← "by elimination" keeps the ROM
-           delete .tmp                                        ✓ done (ROM kept)
+           extract all entries to an output-local temporary directory
+           delete staged junk by blocklist (txt nfo diz jpg jpeg png html url)
+           reject destination collisions before publishing retained files
+           delete .tmp only after successful publication          ✓ done
 --keep-extras → don't delete junk.   Final filename = archive inner entry name (falls back to GoodTitle+ext).
 ```
 
-No format-extension allowlist needed — the blocklist-by-elimination handles all 33 systems including `.bin`+`.cue`/`.gdi` CD images (companions aren't junk, so they survive).
+No format-extension allowlist is needed: the blocklist-by-elimination keeps ROM
+companions such as `.bin`+`.cue`/`.gdi`. Cleanup is confined to the staging
+directory, existing output files are never overwritten, and failures preserve
+the downloaded archive.
 
 ## Defaults & config (v1)
 
@@ -105,17 +109,20 @@ No format-extension allowlist needed — the blocklist-by-elimination handles al
 ```
 vimm-downloader systems                                          [--json]
 vimm-downloader search --query "armored core"                    # all systems
-vimm-downloader search --query "mario" --system NES [--sort rating --order desc] [--limit 50]
-                       [--region USA,Europe] [--year ">=1990"] [--players ">=2"] [--json]
+vimm-downloader search --query "mario" --system NES [--sort Rating --order DESC] [--limit 50] [--json]
 vimm-downloader info    <id>                                     [--json]
 vimm-downloader download <id>
-    [--version <ver>] [--disc <n>] [--format <key>]
+    [--format <key>]
     [--out <dir>]            default: cwd
     [--archive]              keep raw 7z, skip extraction
     [--keep-extras]          keep .nfo/.txt etc.
     [--config <path>]        default: ~/.config/vimm-downloader/config.toml
-    [-v] [--base-url <url>]
 ```
+
+The generated help also exposes reserved `--region`, `--version`, `--disc`, and
+`--verbose` flags. They are not included in the effective v1 surface above
+because they are not yet wired into behavior. Players/year/publisher filters,
+`--base-url`, resume support, and interactive selection remain deferred.
 
 ## Dependencies (portable, rustls-only, static/cross-compilable)
 
@@ -124,12 +131,15 @@ vimm-downloader download <id>
 ## Testing
 
 - **Offline unit tests** against saved HTML fixtures (`vault_home.html`, `nes_list.html`, `armored_core_all.html`, `game_834.html`, `game_7818.html`). Snapshot parser outputs.
-- **Synthetic 7z extraction test** (rom + junk) asserting junk is removed, ROM kept.
+- **Synthetic ZIP and 7z extraction tests** asserting staged junk is removed,
+  ROM files are kept, unrelated output survives, collisions are non-destructive,
+  and nested paths are preserved.
 - `--features live` for manual integration tests against vimm.net (not in CI).
 
 ## Build/CI
 
-- `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` (offline).
+- `cargo fmt --all -- --check`, `cargo test` (offline),
+  `cargo clippy --all-targets --all-features -- -D warnings`.
 - Release profile: `lto = true`, `codegen-units = 1`, `strip = true` → small static CLI binary.
 - Cross-compile targets (rustls + no system deps): `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`.
 
@@ -188,12 +198,12 @@ vimm-downloader download <id>
 - Summary: Set up the vimm-downloader Cargo workspace (`vimm-core`, `vimm-cli`, `vimm-bindings`) + CI.
 - Problem statement: Empty repo (README only). Need the portable-core + thin-frontend architecture from the locked design before any feature work, producing a static, cross-compilable CLI via rustls.
 - Acceptance criteria:
-  - [ ] Root `Cargo.toml` workspace with members `crates/vimm-core`, `crates/vimm-cli`, `crates/vimm-bindings`
-  - [ ] `vimm-core`: `rlib + cdylib + staticlib`; `vimm-cli`: binary; `vimm-bindings`: compiling stub
-  - [ ] Shared deps use `rustls-tls` (reqwest) — no OpenSSL anywhere
-  - [ ] Release profile: `lto=true, codegen-units=1, strip=true`
-  - [ ] `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` pass
-  - [ ] GitHub Actions: fmt + clippy + test on push/PR
+  - [x] Root `Cargo.toml` workspace with members `crates/vimm-core`, `crates/vimm-cli`, `crates/vimm-bindings`, `crates/vimm-spike`
+  - [x] `vimm-core`: `rlib + cdylib + staticlib`; `vimm-cli`: binary; `vimm-bindings`: compiling stub
+  - [x] Shared deps use `rustls-tls` (reqwest) — no OpenSSL anywhere
+  - [x] Release profile: `lto=true, codegen-units=1, strip=true`
+  - [x] `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test` pass
+  - [x] GitHub Actions: fmt + clippy + test on push/PR
 - Resources: Locked design → Workspace section. Related: none (root).
 
 **#2 — Define core data model and error types**
@@ -201,12 +211,12 @@ vimm-downloader download <id>
 - Summary: Implement `model.rs` (System, SearchQuery, GameSummary, GameDetail, Media, Format, ExtraFlag, Sort, Order, Op) + `error.rs`.
 - Problem statement: All parsers and the CLI need a shared, well-typed model first. Library errors must be strongly typed (thiserror); CLI uses anyhow.
 - Acceptance criteria:
-  - [ ] `model.rs` defines all structs/enums with serde derives
-  - [ ] `SearchQuery.system: Option<String>`; `mode` derived (None/"all" → adv, Some → list)
-  - [ ] `Format { key, label, description, alt: u8, zipped_size_bytes }`
-  - [ ] `GameSummary.extras: Vec<ExtraFlag>` (T/D/P/U/B) + `rating: Option<f32>`
-  - [ ] `error.rs`: `VimmError` enum (Http, Parse, Io, Archive, Config)
-  - [ ] Unit test for `SearchQuery` → mode derivation
+  - [x] `model.rs` defines all structs/enums with serde derives
+  - [x] `SearchQuery.system: Option<String>`; `mode` derived (None/"all" → adv, Some → list)
+  - [x] `Format { key, label, description, alt: u8, zipped_size_bytes }`
+  - [x] `GameSummary.extras: Vec<ExtraFlag>` (T/D/P/U/B) + `rating: Option<f32>`
+  - [x] `error.rs`: `VimmError` enum (Http, Parse, Io, Archive, Config)
+  - [x] Unit test for `SearchQuery` → mode derivation
 - Resources: Locked design → Data model. Depends on: #1.
 
 ### M2 — Scraping the Vault
@@ -216,12 +226,12 @@ vimm-downloader download <id>
 - Summary: `client.rs` — `VimmClient` with browser UA, cookie store, retry/backoff, 500ms rate limit, timeouts.
 - Problem statement: vimm.net is ad-funded with anti-bot/cookie behavior; we must be polite and resilient to avoid blocks and transient failures. rustls keeps the binary portable.
 - Acceptance criteria:
-  - [ ] `VimmClient::new()` / `with_config(Config)`
-  - [ ] Browser UA, `cookie_store=true`, rustls, gzip, redirects
-  - [ ] Retry w/ exp backoff on 5xx/network (3 attempts), configurable timeout
-  - [ ] Min 500ms between requests (configurable rate limiter)
-  - [ ] Public `get_text` / `post_stream` methods
-  - [ ] Unit tests with `wiremock` for retry + rate-limit
+  - [x] `VimmClient::new()` / `with_config(ClientConfig)`
+  - [x] Browser UA, cookie store, rustls, gzip, redirects
+  - [x] Retry with exponential backoff on 5xx/network failures, configurable timeout
+  - [x] Configurable minimum interval between requests
+  - [x] Internal text and streaming request helpers without leaking `reqwest` types publicly
+  - [x] `wiremock` tests for retry and rate limiting
 - Resources: Locked design → Pragmatic robustness. Depends on: #1, #2.
 
 **#4 — Systems parser + `systems` command**
@@ -229,10 +239,10 @@ vimm-downloader download <id>
 - Summary: Parse 33 consoles from `/vault` (slug, name, launch year); expose `list_systems()` + `systems` subcommand.
 - Problem statement: Users must discover non-obvious slugs (`X360-D`, `PSP`, `NES`) required by `search --system`. The `/vault` submenu + `title="Launched …"` spans provide this.
 - Acceptance criteria:
-  - [ ] `systems::parse(html) -> Vec<System>` from `#subMenu` links
-  - [ ] `VimmClient::list_systems()` with in-memory cache
-  - [ ] `vimm-downloader systems` table + `--json`
-  - [ ] Fixture `vault_home.html` + snapshot test
+  - [x] `systems::parse(html) -> Vec<System>` from `#subMenu` links
+  - [x] `VimmClient::list_systems()` with in-memory cache
+  - [x] `vimm-downloader systems` table + `--json`
+  - [x] Fixture `vault_home.html` + regression test
 - Resources: Research → `/vault` HTML. Depends on: #3, #10.
 
 **#5 — Search parser (per-system + all-system dual schema)**
@@ -240,12 +250,12 @@ vimm-downloader download <id>
 - Summary: Parse `/vault/?p=list&…` handling both schemas (per-system has Rating, all-system has System column), extras badges, decoy hrefs.
 - Problem statement: All-system search (`mode=adv`, empty `system`) and per-system render different columns; all-system drops Rating. Rows contain decoy `/vault/999999` links + inline extras badges.
 - Acceptance criteria:
-  - [ ] `search::parse(html, query) -> Vec<GameSummary>` detects schema by first `<th>`
-  - [ ] Skips decoy `999999`; extracts id, title, regions, version, languages
-  - [ ] Parses extras badges `<b class="redBorder" title="Demo">D</b>` → `ExtraFlag`
-  - [ ] `rating` only in per-system mode
-  - [ ] `VimmClient::search(SearchQuery)` builds correct params (`mode=adv`+empty system when None/"all")
-  - [ ] Fixtures `nes_list.html`, `armored_core_all.html` + snapshot tests
+  - [x] `search::parse(html, query) -> Vec<GameSummary>` detects schema by first `<th>`
+  - [x] Skips decoy `999999`; extracts id, title, regions, version, languages
+  - [x] Parses extras badges `<b class="redBorder" title="Demo">D</b>` → `ExtraFlag`
+  - [x] `rating` only in per-system mode
+  - [x] `VimmClient::search(SearchQuery)` builds correct params (`mode=adv`+empty system when None/"all")
+  - [x] Fixtures `nes_list.html`, `armored_core_all.html` + regression tests
 - Resources: Research → NES list + armored-core all-system pages. Depends on: #3, #2, #10.
 
 **#6 — Detail parser (media JSON, base64 titles, version/disc/format selects)**
@@ -253,12 +263,12 @@ vimm-downloader download <id>
 - Summary: Parse `/vault/{id}` — embedded `media` JSON, base64 `GoodTitle`, metadata table, `dl_version`/`disc_number`/`dl_format` selects → `Media`/`Format`.
 - Problem statement: A game's file is selected across three dimensions (version, disc, format). The page embeds a `media` JS array (valid JSON) with base64 titles + `Mirror[]` format list; selects declare labels/descriptions and the site's `selected` default.
 - Acceptance criteria:
-  - [ ] `detail::parse(html) -> GameDetail` extracts `let media=[…]` via regex + serde_json
-  - [ ] Decodes base64 `GoodTitle`
-  - [ ] Builds `Media.formats` from `Mirror[]` + `Zipped/AltZipped/AltZipped2` by index; synthesizes single format when `#dl_format` absent
-  - [ ] Parses `#dl_version` (incl. `selected`), `#disc_number`, `#dl_format` options (label+title)
-  - [ ] Parses metadata table (region, players, year, publisher, serial, ratings, verified_date)
-  - [ ] Fixtures `game_834.html` (single-format) + `game_7818.html` (3×3 multi-format) + snapshot tests
+  - [x] `detail::parse(html) -> GameDetail` extracts `let media=[…]` via regex + serde_json
+  - [x] Decodes base64 `GoodTitle`
+  - [x] Builds formats from mirror and zipped-size fields, including current scalar KiB values and numeric alt options
+  - [x] Parses version, disc, and format selectors across current and legacy schemas
+  - [x] Parses metadata tables including `GoodDate` and legacy `VerifiedDate`
+  - [x] Legacy and current detail fixtures cover single- and multi-format pages
 - Resources: Research → games 834 + 7818. Depends on: #3, #2.
 
 ### M3 — Download Pipeline
@@ -266,7 +276,10 @@ vimm-downloader download <id>
 **#7 — Download streaming with progress**
 - Theme: Streaming I/O & progress reporting
 - Summary: `GET dl3.vimm.net/?mediaId={id}&alt={N}` with Referer header, stream to `.tmp` with indicatif progress.
-- Problem statement: ROMs range KB → ~1GB; must stream to disk (not buffer), with live progress and resumable `.tmp` naming. `alt` selects the format variant.
+- Problem statement: ROMs range from KB to about 1 GB; they must stream to disk
+  rather than be buffered in memory. Temporary naming permits atomic publication
+  and cleanup on failure; resumable downloads remain deferred. `alt` selects the
+  format variant.
 - Acceptance criteria:
   - [x] `download_rom(client, media_id, alt, game_id, dest, progress_cb)` streams to `.tmp`
   - [x] Uses GET request with Referer header set to `vimm.net/vault/{game_id}`
@@ -310,8 +323,8 @@ vimm-downloader download <id>
 - Problem statement: The CLI is the v1 frontend; needs a consistent surface matching the design, with human tables by default and machine JSON for scripting.
 - Acceptance criteria:
   - [x] clap derive: `systems`, `search`, `info`, `download`
-  - [x] `search` flags: `--system` (optional), `--query`, `--region`, `--sort`, `--order`, `--limit`, `--players`, `--year`, `--publisher`, `--json`
-  - [x] `download` flags: `--version`, `--disc`, `--format`, `--out`, `--archive`, `--keep-extras`, `--config`, `-v`, `--base-url`
+  - [x] Effective `search` flags: required `--query`; optional `--system`, `--sort`, `--order`, `--limit`, `--json`
+  - [x] Effective `download` flags: `--format`, `--out`, `--archive`, `--keep-extras`, `--config`, `--json`
   - [x] `--json` on every subcommand; default human-readable tables
   - [x] Defaults: newest version / disc 1 / first `#dl_format` option
 - Resources: Locked design → CLI surface. Depends on: #4, #5, #6, #7, #8.
@@ -336,9 +349,9 @@ vimm-downloader download <id>
 - Problem statement: CI must not hit vimm.net; parsers need regression protection as site HTML evolves.
 - Acceptance criteria:
   - [x] Fixtures in `tests/fixtures/`: `vault_home.html`, `nes_list.html`, `armored_core_all.html`, `game_834.html`, `game_7818.html`
-  - [x] Snapshot tests for systems, both search schemas, single- + multi-format detail
+  - [x] Regression tests for systems, both search schemas, and legacy/current detail schemas
   - [x] All pass with `cargo test` (no network)
-  - [x] Document how to refresh fixtures (`UPDATE_SNAPSHOTS=1 cargo test`)
+  - [x] Fixtures are ordinary checked-in HTML; update them intentionally with matching parser assertions
 - Resources: Pages fetched during design. Depends on: #4, #5, #6.
 
 **#13 — Synthetic 7z extraction test**
