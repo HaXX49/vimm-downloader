@@ -1,6 +1,6 @@
 # Issue #25 — Cross-Platform Release Artifacts
 
-> Status: **Awaiting approval**. Branch: `issue-25/release-artifacts`.
+> Status: **Approved** (2026-07-14). Branch: `issue-25/release-artifacts`.
 
 ## Problem
 
