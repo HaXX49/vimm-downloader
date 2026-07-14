@@ -85,7 +85,8 @@ By default, `download` selects the site's first format, streams an archive into
 are first processed in a temporary staging directory inside `--out`; unrelated
 files are never scanned or deleted. Files with common extra-material extensions
 (`.txt`, `.nfo`, `.diz`, images, HTML, and URL files) are removed only from that
-staging directory.
+staging directory. After network transfer completes, a separate elapsed-time
+spinner remains active while large archives are being extracted.
 
 - `--archive` keeps the raw archive and skips extraction.
 - `--keep-extras` retains extra material during extraction.

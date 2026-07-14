@@ -407,3 +407,22 @@ because they are not yet wired into behavior. Players/year/publisher filters,
   - [x] Staging directories are removed after success and failure
   - [x] Filesystem errors identify their operation and path
 - Resources: Windows reproduction in `C:\Users\yannd\Downloads`; GitHub issue #29.
+
+**#35 — Show extraction progress after downloads complete**
+- Theme: CLI progress and async/blocking boundaries
+- Summary: End the network progress phase when transfer completes, then show a
+  distinct elapsed extraction spinner while decompression runs on Tokio's
+  blocking worker pool.
+- Findings:
+  - A GameCube archive near 976 MB can take long enough to extract that leaving
+    the completed download bar unchanged appears to be a hang.
+  - ZIP and 7z extraction APIs are synchronous and must not run directly on an
+    async runtime worker.
+- Acceptance criteria:
+  - [x] Human output clearly transitions from downloading to extracting
+  - [x] Extraction runs through `tokio::task::spawn_blocking`
+  - [x] Extraction success and failure terminate the spinner cleanly
+  - [x] JSON mode remains free of progress output on stdout
+  - [x] Blocking-worker extraction errors are covered by an offline CLI test
+  - [x] Existing offline archive safety and extraction tests remain green
+- Resources: Star Fox: Assault metadata `/vault/7798`; GitHub issue #35.

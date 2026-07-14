@@ -1,6 +1,7 @@
 //! vimm-cli: command-line frontend for the vimm-downloader.
 
 use clap::{Parser, Subcommand};
+use std::path::{Path, PathBuf};
 use vimm_core::model::{Order, Ratings, SearchQuery, Sort};
 use vimm_core::VimmClient;
 
@@ -146,6 +147,17 @@ fn display_decimal_unit(value: u64, divisor: u64, unit: &str) -> String {
     format!("{whole}.{hundredths:02} {unit}")
 }
 
+async fn extract_archive(
+    archive_path: PathBuf,
+    out_dir: PathBuf,
+    opts: vimm_core::ExtractOptions,
+) -> anyhow::Result<Vec<PathBuf>> {
+    tokio::task::spawn_blocking(move || vimm_core::extract(&archive_path, &out_dir, opts))
+        .await
+        .map_err(|error| anyhow::anyhow!("archive extraction task failed: {error}"))?
+        .map_err(anyhow::Error::from)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -248,7 +260,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Command::Download(args) => {
-            let out = std::path::Path::new(&args.out);
+            let out = Path::new(&args.out);
             std::fs::create_dir_all(out)?;
 
             let config_path = args.config.as_ref().map(std::path::Path::new);
@@ -338,11 +350,36 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Vec::new()
             } else {
+                if let Some(bar) = progress_bar {
+                    bar.finish_with_message("Download complete; extracting...");
+                }
+
+                let extraction_spinner = if cli.json {
+                    None
+                } else {
+                    let spinner = indicatif::ProgressBar::new_spinner();
+                    spinner.set_style(indicatif::ProgressStyle::with_template(
+                        "{spinner:.green} [{elapsed_precise}] {msg}",
+                    )?);
+                    spinner.set_message(format!("Extracting to {}", out.display()));
+                    spinner.enable_steady_tick(std::time::Duration::from_millis(100));
+                    Some(spinner)
+                };
+
                 let opts = vimm_core::ExtractOptions {
                     keep_archive: false,
                     keep_extras: args.keep_extras,
                 };
-                let files = vimm_core::extract(&path, out, opts)?;
+                let extraction_result = extract_archive(path, out.to_path_buf(), opts).await;
+                let files = match extraction_result {
+                    Ok(files) => files,
+                    Err(error) => {
+                        if let Some(spinner) = extraction_spinner {
+                            spinner.abandon_with_message("Extraction failed");
+                        }
+                        return Err(error);
+                    }
+                };
 
                 if cli.json {
                     let file_paths: Vec<_> = files
@@ -360,8 +397,12 @@ async fn main() -> anyhow::Result<()> {
                         }))?
                     );
                 } else {
-                    if let Some(bar) = progress_bar {
-                        bar.finish_with_message(format!("Extracted {} files", files.len()));
+                    if let Some(spinner) = extraction_spinner {
+                        spinner.finish_with_message(format!(
+                            "Extracted {} files to {}",
+                            files.len(),
+                            out.display()
+                        ));
                     } else {
                         eprintln!("Extracted {} files to {}", files.len(), out.display());
                     }
@@ -377,6 +418,7 @@ async fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn displays_unavailable_values() {
@@ -403,5 +445,21 @@ mod tests {
         assert_eq!(display_size(512 * 1024), "512 KB");
         assert_eq!(display_size(6632 * 1024), "6.48 MB");
         assert_eq!(display_size(1536 * 1024 * 1024), "1.50 GB");
+    }
+
+    #[tokio::test]
+    async fn propagates_extraction_errors_from_blocking_worker() {
+        let temp = TempDir::new().unwrap();
+        let missing_archive = temp.path().join("missing.archive");
+
+        let error = extract_archive(
+            missing_archive,
+            temp.path().join("out"),
+            vimm_core::ExtractOptions::default(),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("open downloaded archive"));
     }
 }
