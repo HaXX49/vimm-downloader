@@ -38,22 +38,107 @@ pub fn extract(
     opts: ExtractOptions,
 ) -> Result<Vec<PathBuf>, VimmError> {
     let format = detect_format(archive_path)?;
+    fs::create_dir_all(out_dir)
+        .map_err(|error| io_with_path("create output directory", out_dir, &error))?;
+    let staging = tempfile::Builder::new()
+        .prefix(".vimm-extract-")
+        .tempdir_in(out_dir)
+        .map_err(|error| io_with_path("create extraction staging directory", out_dir, &error))?;
 
     match format {
-        ArchiveFormat::SevenZ => extract_sevenz(archive_path, out_dir)?,
-        ArchiveFormat::Zip => extract_zip(archive_path, out_dir)?,
+        ArchiveFormat::SevenZ => extract_sevenz(archive_path, staging.path())?,
+        ArchiveFormat::Zip => extract_zip(archive_path, staging.path())?,
     }
 
     if !opts.keep_extras {
-        delete_junk(out_dir)?;
+        delete_junk(staging.path())?;
     }
+
+    let staged_files = collect_extracted_files(staging.path())?;
+    let published_files = publish_files(staging.path(), out_dir, &staged_files)?;
 
     if !opts.keep_archive {
-        fs::remove_file(archive_path).map_err(VimmError::from)?;
+        fs::remove_file(archive_path)
+            .map_err(|error| io_with_path("remove downloaded archive", archive_path, &error))?;
     }
 
-    // Re-collect after junk deletion.
-    collect_extracted_files(out_dir)
+    Ok(published_files)
+}
+
+fn publish_files(
+    staging_dir: &Path,
+    out_dir: &Path,
+    staged_files: &[PathBuf],
+) -> Result<Vec<PathBuf>, VimmError> {
+    let destinations = staged_files
+        .iter()
+        .map(|source| {
+            let relative = source.strip_prefix(staging_dir).map_err(|_| {
+                VimmError::Archive(format!(
+                    "staged path escaped extraction directory: {}",
+                    source.display()
+                ))
+            })?;
+            let destination = out_dir.join(relative);
+            ensure_destination_available(out_dir, &destination)?;
+            Ok((source, destination))
+        })
+        .collect::<Result<Vec<_>, VimmError>>()?;
+
+    let mut published = Vec::with_capacity(destinations.len());
+    for (source, destination) in destinations {
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| io_with_path("create destination directory", parent, &error))?;
+        }
+        fs::rename(source, &destination)
+            .map_err(|error| io_with_path("publish extracted file", &destination, &error))?;
+        published.push(destination);
+    }
+    Ok(published)
+}
+
+fn ensure_destination_available(out_dir: &Path, destination: &Path) -> Result<(), VimmError> {
+    match fs::symlink_metadata(destination) {
+        Ok(_) => {
+            return Err(VimmError::Io(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!(
+                    "refusing to overwrite existing destination '{}'",
+                    destination.display()
+                ),
+            )))
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(io_with_path("inspect destination", destination, &error)),
+    }
+
+    let mut parent = destination.parent();
+    while let Some(path) = parent.filter(|path| *path != out_dir) {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.file_type().is_dir() => {}
+            Ok(_) => {
+                return Err(VimmError::Io(std::io::Error::new(
+                    std::io::ErrorKind::AlreadyExists,
+                    format!(
+                        "destination parent is not a directory: '{}'",
+                        path.display()
+                    ),
+                )))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_with_path("inspect destination parent", path, &error)),
+        }
+        parent = path.parent();
+    }
+    Ok(())
+}
+
+fn io_with_path(operation: &str, path: &Path, error: &std::io::Error) -> VimmError {
+    VimmError::Io(std::io::Error::new(
+        error.kind(),
+        format!("{operation} '{}': {error}", path.display()),
+    ))
 }
 
 enum ArchiveFormat {
@@ -68,9 +153,12 @@ const SEVENZ_MAGIC: &[u8] = &[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C];
 const ZIP_MAGIC: &[u8] = &[0x50, 0x4B, 0x03, 0x04];
 
 fn detect_format(path: &Path) -> Result<ArchiveFormat, VimmError> {
-    let mut file = fs::File::open(path).map_err(VimmError::from)?;
+    let mut file = fs::File::open(path)
+        .map_err(|error| io_with_path("open downloaded archive", path, &error))?;
     let mut buf = [0u8; 6];
-    let n = file.read(&mut buf).map_err(VimmError::from)?;
+    let n = file
+        .read(&mut buf)
+        .map_err(|error| io_with_path("read downloaded archive", path, &error))?;
     if n < 4 {
         return Err(VimmError::Archive("file too short to detect format".into()));
     }
@@ -87,20 +175,27 @@ fn detect_format(path: &Path) -> Result<ArchiveFormat, VimmError> {
 }
 
 fn extract_sevenz(path: &Path, out_dir: &Path) -> Result<(), VimmError> {
-    let file = fs::File::open(path).map_err(VimmError::from)?;
-    sevenz_rust2::decompress_file(path, out_dir).map_err(|e| VimmError::Archive(e.to_string()))?;
-    // Suppress unused warning for `file` — decompress_file opens its own handle.
-    drop(file);
-    Ok(())
+    sevenz_rust2::decompress_file(path, out_dir).map_err(|error| {
+        VimmError::Archive(format!(
+            "extract 7z archive '{}' into '{}': {error}",
+            path.display(),
+            out_dir.display()
+        ))
+    })
 }
 
 fn extract_zip(path: &Path, out_dir: &Path) -> Result<(), VimmError> {
-    let file = fs::File::open(path).map_err(VimmError::from)?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| VimmError::Archive(e.to_string()))?;
-    archive
-        .extract(out_dir)
-        .map_err(|e| VimmError::Archive(e.to_string()))?;
-    Ok(())
+    let file =
+        fs::File::open(path).map_err(|error| io_with_path("open ZIP archive", path, &error))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|error| VimmError::Archive(format!("open ZIP '{}': {error}", path.display())))?;
+    archive.extract(out_dir).map_err(|error| {
+        VimmError::Archive(format!(
+            "extract ZIP '{}' into '{}': {error}",
+            path.display(),
+            out_dir.display()
+        ))
+    })
 }
 
 fn collect_extracted_files(dir: &Path) -> Result<Vec<PathBuf>, VimmError> {
@@ -110,8 +205,10 @@ fn collect_extracted_files(dir: &Path) -> Result<Vec<PathBuf>, VimmError> {
 }
 
 fn collect_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), VimmError> {
-    for entry in fs::read_dir(dir).map_err(VimmError::from)? {
-        let entry = entry.map_err(VimmError::from)?;
+    for entry in
+        fs::read_dir(dir).map_err(|error| io_with_path("read extraction directory", dir, &error))?
+    {
+        let entry = entry.map_err(|error| io_with_path("read extraction entry", dir, &error))?;
         let path = entry.path();
         if path.is_dir() {
             collect_files_recursive(&path, files)?;
@@ -128,18 +225,28 @@ fn delete_junk(dir: &Path) -> Result<(), VimmError> {
 }
 
 fn delete_junk_recursive(dir: &Path, junk_exts: &HashSet<&str>) -> Result<(), VimmError> {
-    for entry in fs::read_dir(dir).map_err(VimmError::from)? {
-        let entry = entry.map_err(VimmError::from)?;
+    for entry in fs::read_dir(dir)
+        .map_err(|error| io_with_path("read junk-cleanup directory", dir, &error))?
+    {
+        let entry = entry.map_err(|error| io_with_path("read junk-cleanup entry", dir, &error))?;
         let path = entry.path();
         if path.is_dir() {
             delete_junk_recursive(&path, junk_exts)?;
             // Remove empty directories after junk deletion.
-            if path.read_dir().map_err(VimmError::from)?.next().is_none() {
-                fs::remove_dir(&path).map_err(VimmError::from)?;
+            if path
+                .read_dir()
+                .map_err(|error| io_with_path("inspect cleaned directory", &path, &error))?
+                .next()
+                .is_none()
+            {
+                fs::remove_dir(&path).map_err(|error| {
+                    io_with_path("remove empty cleaned directory", &path, &error)
+                })?;
             }
         } else if let Some(ext) = path.extension() {
             if junk_exts.contains(ext.to_string_lossy().as_ref()) {
-                fs::remove_file(&path).map_err(VimmError::from)?;
+                fs::remove_file(&path)
+                    .map_err(|error| io_with_path("remove archive junk file", &path, &error))?;
             }
         }
     }
@@ -161,6 +268,9 @@ mod tests {
         archive.start_file_from_path("game.nes", options).unwrap();
         archive.write_all(b"ROM_DATA").unwrap();
 
+        archive.start_file_from_path("bonus.sav", options).unwrap();
+        archive.write_all(b"SAVE_DATA").unwrap();
+
         archive.start_file_from_path("readme.txt", options).unwrap();
         archive.write_all(b"Read me!").unwrap();
 
@@ -173,6 +283,17 @@ mod tests {
 
     fn setup_test_dir() -> TempDir {
         TempDir::new().unwrap()
+    }
+
+    fn assert_no_staging_directories(out_dir: &Path) {
+        let staging_exists = fs::read_dir(out_dir).unwrap().any(|entry| {
+            entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".vimm-extract-")
+        });
+        assert!(!staging_exists, "temporary extraction directory remained");
     }
 
     #[test]
@@ -188,6 +309,7 @@ mod tests {
         assert!(!files.iter().any(|f| f.file_name().unwrap() == "readme.txt"));
         assert!(!files.iter().any(|f| f.file_name().unwrap() == "cover.jpg"));
         assert!(!archive.exists());
+        assert_no_staging_directories(&out_dir);
     }
 
     #[test]
@@ -230,6 +352,78 @@ mod tests {
         .unwrap();
 
         assert!(archive.exists());
+    }
+
+    #[test]
+    fn extraction_never_deletes_unrelated_output_files() {
+        let tmp = setup_test_dir();
+        let out_dir = tmp.path().join("out");
+        let nested = out_dir.join("personal");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(out_dir.join("Vimm's Lair.txt"), b"existing notes").unwrap();
+        fs::write(out_dir.join("cover.jpg"), b"existing cover").unwrap();
+        fs::write(nested.join("page.html"), b"existing page").unwrap();
+        let archive = create_test_zip(tmp.path());
+
+        extract(&archive, &out_dir, ExtractOptions::default()).unwrap();
+
+        assert_eq!(
+            fs::read(out_dir.join("Vimm's Lair.txt")).unwrap(),
+            b"existing notes"
+        );
+        assert_eq!(
+            fs::read(out_dir.join("cover.jpg")).unwrap(),
+            b"existing cover"
+        );
+        assert_eq!(
+            fs::read(nested.join("page.html")).unwrap(),
+            b"existing page"
+        );
+        assert!(out_dir.join("game.nes").exists());
+        assert_no_staging_directories(&out_dir);
+    }
+
+    #[test]
+    fn destination_collision_is_non_destructive() {
+        let tmp = setup_test_dir();
+        let out_dir = tmp.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+        fs::write(out_dir.join("game.nes"), b"MY_EXISTING_ROM").unwrap();
+        let archive = create_test_zip(tmp.path());
+
+        let error = extract(&archive, &out_dir, ExtractOptions::default()).unwrap_err();
+
+        assert!(
+            matches!(error, VimmError::Io(ref io) if io.kind() == std::io::ErrorKind::AlreadyExists)
+        );
+        assert_eq!(
+            fs::read(out_dir.join("game.nes")).unwrap(),
+            b"MY_EXISTING_ROM"
+        );
+        assert!(!out_dir.join("bonus.sav").exists());
+        assert!(archive.exists(), "archive should remain recoverable");
+        assert_no_staging_directories(&out_dir);
+    }
+
+    #[test]
+    fn nested_archive_paths_are_preserved() {
+        let tmp = setup_test_dir();
+        let out_dir = tmp.path().join("out");
+        fs::create_dir_all(&out_dir).unwrap();
+        let archive_path = tmp.path().join("nested.zip");
+        let file = fs::File::create(&archive_path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file_from_path("disc/game.bin", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(b"DISC_DATA").unwrap();
+        archive.finish().unwrap();
+
+        let files = extract(&archive_path, &out_dir, ExtractOptions::default()).unwrap();
+
+        assert_eq!(files, vec![out_dir.join("disc/game.bin")]);
+        assert_eq!(fs::read(&files[0]).unwrap(), b"DISC_DATA");
+        assert_no_staging_directories(&out_dir);
     }
 
     #[test]
