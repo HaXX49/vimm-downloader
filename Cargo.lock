@@ -2717,14 +2717,14 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vimm-bindings"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "vimm-core",
 ]
 
 [[package]]
 name = "vimm-cli"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2736,7 +2736,7 @@ dependencies = [
 
 [[package]]
 name = "vimm-core"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "base64",
  "bytes",
@@ -2759,7 +2759,7 @@ dependencies = [
 
 [[package]]
 name = "vimm-spike"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "bytes",
