@@ -1,7 +1,7 @@
 //! vimm-cli: command-line frontend for the vimm-downloader.
 
 use clap::{Parser, Subcommand};
-use vimm_core::model::{Order, SearchQuery, Sort};
+use vimm_core::model::{Order, Ratings, SearchQuery, Sort};
 use vimm_core::VimmClient;
 
 /// Download ROMs from the Vimm's Lair Vault.
@@ -87,6 +87,65 @@ struct DownloadArgs {
     config: Option<String>,
 }
 
+fn display_or_na(value: &str) -> &str {
+    if value.is_empty() {
+        "N/A"
+    } else {
+        value
+    }
+}
+
+fn display_year(year: u16) -> String {
+    if year == 0 {
+        "N/A".to_string()
+    } else {
+        year.to_string()
+    }
+}
+
+fn display_ratings(ratings: Ratings) -> String {
+    if ratings.graphics == 0.0
+        && ratings.sound == 0.0
+        && ratings.gameplay == 0.0
+        && ratings.overall == 0.0
+        && ratings.votes == 0
+    {
+        return "N/A".to_string();
+    }
+    format!(
+        "G={:.1} S={:.1} GP={:.1} O={:.1} ({} votes)",
+        ratings.graphics, ratings.sound, ratings.gameplay, ratings.overall, ratings.votes
+    )
+}
+
+fn display_size(bytes: u64) -> String {
+    const KIB: u64 = 1024;
+    const MIB: u64 = KIB * 1024;
+    const GIB: u64 = MIB * 1024;
+
+    if bytes == 0 {
+        "N/A".to_string()
+    } else if bytes >= GIB {
+        display_decimal_unit(bytes, GIB, "GB")
+    } else if bytes >= MIB {
+        display_decimal_unit(bytes, MIB, "MB")
+    } else if bytes >= KIB {
+        format!("{} KB", bytes / KIB)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+fn display_decimal_unit(value: u64, divisor: u64, unit: &str) -> String {
+    let mut whole = value / divisor;
+    let mut hundredths = ((value % divisor) * 100 + divisor / 2) / divisor;
+    if hundredths == 100 {
+        whole += 1;
+        hundredths = 0;
+    }
+    format!("{whole}.{hundredths:02} {unit}")
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -160,32 +219,21 @@ async fn main() -> anyhow::Result<()> {
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&detail)?);
             } else {
-                println!("Title: {}", detail.title);
-                println!("System: {}", detail.system);
-                println!("Region: {}", detail.region);
+                println!("Title: {}", display_or_na(&detail.title));
+                println!("System: {}", display_or_na(&detail.system));
+                println!("Region: {}", display_or_na(&detail.region));
                 println!("Players: {}", detail.players);
-                println!("Year: {}", detail.year);
-                println!("Publisher: {}", detail.publisher);
-                println!("Serial: {}", detail.serial);
-                println!(
-                    "Ratings: G={:.1} S={:.1} GP={:.1} O={:.1} ({} votes)",
-                    detail.ratings.graphics,
-                    detail.ratings.sound,
-                    detail.ratings.gameplay,
-                    detail.ratings.overall,
-                    detail.ratings.votes
-                );
-                if !detail.verified_date.is_empty() {
-                    println!("Verified: {}", detail.verified_date);
-                }
+                println!("Year: {}", display_year(detail.year));
+                println!("Publisher: {}", display_or_na(&detail.publisher));
+                println!("Serial: {}", display_or_na(&detail.serial));
+                println!("Ratings: {}", display_ratings(detail.ratings));
+                println!("Verified: {}", display_or_na(&detail.verified_date));
                 println!("\nMedia ({} version(s)):", detail.media.len());
                 for (i, media) in detail.media.iter().enumerate() {
                     println!("\n  [{}] {} (disc {})", i + 1, media.version, media.disc);
-                    println!("    Title: {}", media.good_title);
-                    println!("    Serial: {}", media.serial);
-                    if !media.verified_date.is_empty() {
-                        println!("    Verified: {}", media.verified_date);
-                    }
+                    println!("    Title: {}", display_or_na(&media.good_title));
+                    println!("    Serial: {}", display_or_na(&media.serial));
+                    println!("    Verified: {}", display_or_na(&media.verified_date));
                     println!("    Formats:");
                     for fmt in &media.formats {
                         println!(
@@ -193,11 +241,7 @@ async fn main() -> anyhow::Result<()> {
                             fmt.alt,
                             fmt.key,
                             fmt.label,
-                            if fmt.zipped_size_bytes > 0 {
-                                format!("{} KB", fmt.zipped_size_bytes / 1024)
-                            } else {
-                                "N/A".to_string()
-                            }
+                            display_size(fmt.zipped_size_bytes)
                         );
                     }
                 }
@@ -328,4 +372,36 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn displays_unavailable_values() {
+        assert_eq!(display_or_na(""), "N/A");
+        assert_eq!(display_or_na("Nintendo"), "Nintendo");
+        assert_eq!(display_year(0), "N/A");
+        assert_eq!(display_year(2005), "2005");
+        assert_eq!(
+            display_ratings(Ratings {
+                graphics: 0.0,
+                sound: 0.0,
+                gameplay: 0.0,
+                overall: 0.0,
+                votes: 0,
+            }),
+            "N/A"
+        );
+    }
+
+    #[test]
+    fn displays_binary_sizes_with_readable_units() {
+        assert_eq!(display_size(0), "N/A");
+        assert_eq!(display_size(512), "512 B");
+        assert_eq!(display_size(512 * 1024), "512 KB");
+        assert_eq!(display_size(6632 * 1024), "6.48 MB");
+        assert_eq!(display_size(1536 * 1024 * 1024), "1.50 GB");
+    }
 }
