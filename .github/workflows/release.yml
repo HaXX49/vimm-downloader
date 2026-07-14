@@ -26,10 +26,6 @@ jobs:
             target: aarch64-apple-darwin
             binary: vimm-downloader
             asset_name: vimm-downloader-macos-arm64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            binary: vimm-downloader
-            asset_name: vimm-downloader-macos-amd64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary: vimm-downloader.exe
@@ -44,11 +40,14 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Build release
         run: cargo build --release --target ${{ matrix.target }} -p vimm-cli
+      - name: Prepare release asset
+        shell: bash
+        run: cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "${{ matrix.asset_name }}"
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+          path: ${{ matrix.asset_name }}
 
   release:
     name: Create Release
@@ -59,15 +58,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          merge-multiple: true
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
         run: |
-          gh release delete ${{ github.ref_name }} --yes 2>/dev/null || true
-          gh release create ${{ github.ref_name }} \
-            --title "${{ github.ref_name }}" \
-            --generate-notes \
-            artifacts/vimm-downloader-linux-amd64/vimm-downloader \
-            artifacts/vimm-downloader-macos-arm64/vimm-downloader \
-            artifacts/vimm-downloader-macos-amd64/vimm-downloader \
-            artifacts/vimm-downloader-windows-amd64.exe/vimm-downloader.exe
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" --clobber \
+            artifacts/vimm-downloader-linux-amd64 \
+            artifacts/vimm-downloader-macos-arm64 \
+            artifacts/vimm-downloader-windows-amd64.exe
