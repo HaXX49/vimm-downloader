@@ -362,3 +362,19 @@ vimm-downloader download <id>
   - [x] Documented cross-compile: `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-pc-windows-msvc`
   - [x] Binary size recorded: 6.5 MB on `aarch64-apple-darwin` (release)
 - Resources: Locked design → Build/CI. Depends on: all.
+
+**#29 — Prevent archive cleanup from deleting unrelated output files**
+- Theme: Extraction safety
+- Summary: Extract and filter inside an output-local staging directory, then publish retained files without overwriting existing destinations.
+- Findings:
+  - Previous cleanup recursively scanned all of `--out`; with the default `.` this included unrelated user files.
+  - Windows error 5 was raised by an unrelated protected file after the requested ROM had already been extracted.
+- Acceptance criteria:
+  - [x] Junk cleanup is confined to a per-extraction staging directory
+  - [x] Unrelated top-level and nested output files remain untouched
+  - [x] Existing destination files are never overwritten
+  - [x] Collisions fail before publication and preserve the downloaded archive
+  - [x] Retained nested archive paths are published under `--out`
+  - [x] Staging directories are removed after success and failure
+  - [x] Filesystem errors identify their operation and path
+- Resources: Windows reproduction in `C:\Users\yannd\Downloads`; GitHub issue #29.
