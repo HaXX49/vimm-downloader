@@ -30,21 +30,21 @@
           "label": ".ciso",
           "description": "Compressed ISO",
           "alt": 0,
-          "zipped_size_bytes": 350000
+          "zipped_size_bytes": 358400000
         },
         {
           "key": "nkit.iso",
           "label": ".nkit.iso",
           "description": "NKit compressed ISO",
           "alt": 1,
-          "zipped_size_bytes": 320000
+          "zipped_size_bytes": 327680000
         },
         {
           "key": "rvz",
           "label": ".rvz",
           "description": "Dolphin compressed RVZ",
           "alt": 2,
-          "zipped_size_bytes": 310000
+          "zipped_size_bytes": 317440000
         }
       ]
     },
@@ -61,21 +61,21 @@
           "label": ".ciso",
           "description": "Compressed ISO",
           "alt": 0,
-          "zipped_size_bytes": 355000
+          "zipped_size_bytes": 363520000
         },
         {
           "key": "nkit.iso",
           "label": ".nkit.iso",
           "description": "NKit compressed ISO",
           "alt": 1,
-          "zipped_size_bytes": 325000
+          "zipped_size_bytes": 332800000
         },
         {
           "key": "rvz",
           "label": ".rvz",
           "description": "Dolphin compressed RVZ",
           "alt": 2,
-          "zipped_size_bytes": 315000
+          "zipped_size_bytes": 322560000
         }
       ]
     }

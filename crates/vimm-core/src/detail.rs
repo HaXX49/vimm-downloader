@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 use base64::Engine;
 use regex::Regex;
+use scraper::{ElementRef, Selector};
 use serde::Deserialize;
 
 use crate::error::VimmError;
@@ -30,11 +31,8 @@ pub fn parse(html: &str, id: u32) -> Result<GameDetail, VimmError> {
     let doc = scraper::Html::parse_document(html);
 
     // --- Title ---
-    let title = doc
-        .select(&scraper::Selector::parse("h1").unwrap())
-        .next()
-        .map(|h| h.text().collect::<String>().trim().to_string())
-        .unwrap_or_default();
+    let title = parse_title(&doc)?;
+    let system = parse_system(&doc);
 
     // --- Media JSON ---
     let raw_entries = extract_media_json(html)?;
@@ -56,7 +54,12 @@ pub fn parse(html: &str, id: u32) -> Result<GameDetail, VimmError> {
             disc: entry.sort_order,
             good_title,
             serial: entry.serial.clone().unwrap_or_default(),
-            verified_date: entry.verified_date.clone(),
+            verified_date: entry
+                .good_date
+                .as_ref()
+                .map(|date| normalize_date(&date.date))
+                .filter(|date| !date.is_empty())
+                .unwrap_or_else(|| normalize_date(&entry.verified_date)),
             formats,
         });
     }
@@ -64,38 +67,10 @@ pub fn parse(html: &str, id: u32) -> Result<GameDetail, VimmError> {
     // --- Selects (version, disc, format hint) ---
     let selected_version = get_selected_value(html, "dl_version");
     let selected_disc = get_selected_value(html, "disc_number");
-    let has_format_select = scraper::Html::parse_document(html)
-        .select(&scraper::Selector::parse("#dl_format").unwrap())
-        .next()
-        .is_some();
-
-    if has_format_select {
-        // Read format options from the select to enrich labels+descriptions.
-        let doc = scraper::Html::parse_document(html);
-        let opt_sel = scraper::Selector::parse("#dl_format option").unwrap();
-        for opt in doc.select(&opt_sel) {
-            let value = opt.value().attr("value").unwrap_or("");
-            for format in &mut media_list.iter_mut().flat_map(|m| &mut m.formats) {
-                if format.key == value {
-                    format.label = opt.text().collect::<String>().trim().to_string();
-                    format.description = opt.value().attr("title").unwrap_or("").to_string();
-                    // alt was set by build_formats; trust the per-entry index.
-                }
-            }
-        }
-    } else if let Some(entry) = raw_entries.first() {
-        // Single-format: no #dl_format, synthesise from the first Mirror entry.
-        if let Some(first_mirror) = entry.mirror.first() {
-            for format in &mut media_list.iter_mut().flat_map(|m| &mut m.formats) {
-                if format.key == *first_mirror {
-                    format.label = format!(".{first_mirror}");
-                }
-            }
-        }
-    }
+    enrich_formats(html, &raw_entries, &mut media_list);
 
     // --- Metadata table ---
-    let meta = parse_metadata_table(html);
+    let meta = parse_metadata_table(&doc);
 
     let region = meta.get("Region").cloned().unwrap_or_default();
     let players = meta.get("Players").map_or(1, |s| parse_players(s));
@@ -108,23 +83,30 @@ pub fn parse(html: &str, id: u32) -> Result<GameDetail, VimmError> {
     // Simultaneous is not in the standard table; default to false.
     let simultaneous = false;
 
-    let ratings = meta
-        .get("Ratings")
-        .map(|s| parse_ratings(s))
-        .transpose()?
-        .unwrap_or(Ratings {
-            graphics: 0.0,
-            sound: 0.0,
-            gameplay: 0.0,
-            overall: 0.0,
-            votes: 0,
-        });
+    let ratings = parse_metadata_ratings(&meta)?;
 
-    let verified_date = meta.get("Verified").cloned().unwrap_or_default();
+    let serial = if serial.is_empty() {
+        media_list
+            .iter()
+            .find_map(|media| (!media.serial.is_empty()).then(|| media.serial.clone()))
+            .unwrap_or_default()
+    } else {
+        serial
+    };
+    let verified_date = meta
+        .get("Verified")
+        .cloned()
+        .filter(|date| !date.is_empty())
+        .or_else(|| {
+            media_list.iter().find_map(|media| {
+                (!media.verified_date.is_empty()).then(|| media.verified_date.clone())
+            })
+        })
+        .unwrap_or_default();
 
     Ok(GameDetail {
         id,
-        system: String::new(), // system not available on detail page in v1
+        system,
         title,
         region,
         players,
@@ -161,6 +143,9 @@ struct RawMediaEntry {
     #[serde(rename = "VerifiedDate")]
     #[serde(default)]
     verified_date: String,
+    #[serde(rename = "GoodDate")]
+    #[serde(default)]
+    good_date: Option<RawGoodDate>,
     #[serde(rename = "Mirror")]
     mirror: Vec<String>,
     #[serde(rename = "Zipped")]
@@ -175,6 +160,50 @@ struct RawMediaEntry {
     #[allow(dead_code)]
     #[serde(deserialize_with = "deserialize_zipped")]
     alt_zipped2: Option<Vec<u64>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RawGoodDate {
+    date: String,
+}
+
+fn enrich_formats(html: &str, raw_entries: &[RawMediaEntry], media_list: &mut [Media]) {
+    let doc = scraper::Html::parse_document(html);
+    let opt_sel = scraper::Selector::parse("#dl_format option").unwrap();
+    let options: Vec<_> = doc.select(&opt_sel).collect();
+
+    if options.is_empty() {
+        if let Some(first_mirror) = raw_entries.first().and_then(|entry| entry.mirror.first()) {
+            for format in media_list.iter_mut().flat_map(|media| &mut media.formats) {
+                if format.key == *first_mirror {
+                    format.label = format!(".{first_mirror}");
+                }
+            }
+        }
+        return;
+    }
+
+    // Current pages use numeric option values (the alt index), while older
+    // pages used the format key. Position is stable in both schemas.
+    for (index, option) in options.into_iter().enumerate() {
+        let label = option.text().collect::<String>().trim().to_string();
+        let description = option.value().attr("title").unwrap_or("").to_string();
+        let alt = option
+            .value()
+            .attr("value")
+            .and_then(|value| value.parse::<u8>().ok())
+            .unwrap_or_else(|| u8::try_from(index).unwrap_or(0));
+        let key = label.trim_start_matches('.').to_string();
+
+        for media in &mut *media_list {
+            if let Some(format) = media.formats.get_mut(index) {
+                format.key.clone_from(&key);
+                format.label.clone_from(&label);
+                format.description.clone_from(&description);
+                format.alt = alt;
+            }
+        }
+    }
 }
 
 /// Deserialize `Zipped`/`AltZipped`/`AltZipped2` fields that may be either
@@ -288,8 +317,6 @@ fn extract_media_json(html: &str) -> Result<Vec<RawMediaEntry>, VimmError> {
 
 /// Build `Format` entries from a raw media entry.
 fn build_formats(entry: &RawMediaEntry) -> Vec<Format> {
-    let zipped = entry.zipped.as_deref().unwrap_or(&[]);
-
     entry
         .mirror
         .iter()
@@ -299,9 +326,37 @@ fn build_formats(entry: &RawMediaEntry) -> Vec<Format> {
             label: format!(".{key}"),
             description: String::new(),
             alt: u8::try_from(i).unwrap_or(0),
-            zipped_size_bytes: zipped.get(i).copied().unwrap_or(0),
+            zipped_size_bytes: size_kib_for_alt(entry, i).saturating_mul(1024),
         })
         .collect()
+}
+
+fn size_kib_for_alt(entry: &RawMediaEntry, alt: usize) -> u64 {
+    let primary = entry.zipped.as_deref().unwrap_or(&[]);
+    if primary.len() > 1 {
+        return primary.get(alt).copied().unwrap_or(0);
+    }
+
+    match alt {
+        0 => primary.first().copied().unwrap_or(0),
+        1 => entry
+            .alt_zipped
+            .as_deref()
+            .and_then(|sizes| sizes.first())
+            .copied()
+            .unwrap_or(0),
+        2 => entry
+            .alt_zipped2
+            .as_deref()
+            .and_then(|sizes| sizes.first())
+            .copied()
+            .unwrap_or(0),
+        _ => 0,
+    }
+}
+
+fn normalize_date(date: &str) -> String {
+    date.split_whitespace().next().unwrap_or("").to_string()
 }
 
 /// Get the `value` attribute of the first `<option selected>` in a `<select>`.
@@ -315,30 +370,138 @@ fn get_selected_value(html: &str, select_id: &str) -> Option<String> {
         .map(ToString::to_string)
 }
 
-/// Parse the `.vaultTable` metadata into a key–value map.
-fn parse_metadata_table(html: &str) -> HashMap<String, String> {
-    let doc = scraper::Html::parse_document(html);
-    let Ok(row_sel) = scraper::Selector::parse(".vaultTable tr") else {
-        return HashMap::new();
+fn parse_title(doc: &scraper::Html) -> Result<String, VimmError> {
+    let meta_sel = Selector::parse("meta[property='og:title']").unwrap();
+    if let Some(title) = doc
+        .select(&meta_sel)
+        .next()
+        .and_then(|meta| meta.value().attr("content"))
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+    {
+        return Ok(title.to_string());
+    }
+
+    let heading_sel = Selector::parse("h1").unwrap();
+    if let Some(title) = doc
+        .select(&heading_sel)
+        .next()
+        .map(|heading| heading.text().collect::<String>().trim().to_string())
+        .filter(|title| !title.is_empty())
+    {
+        return Ok(title);
+    }
+
+    let canvas_sel = Selector::parse("canvas#canvas[data-v]").unwrap();
+    let Some(encoded) = doc
+        .select(&canvas_sel)
+        .next()
+        .and_then(|canvas| canvas.value().attr("data-v"))
+    else {
+        return Ok(String::new());
     };
-    let Ok(td_sel) = scraper::Selector::parse("td") else {
-        return HashMap::new();
-    };
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|error| VimmError::Parse(format!("title base64 decode error: {error}")))?;
+    String::from_utf8(decoded)
+        .map_err(|_| VimmError::Parse("title canvas is not valid UTF-8".into()))
+}
+
+fn parse_system(doc: &scraper::Html) -> String {
+    let selector = Selector::parse("#subMenu a.active[href^='/vault/']").unwrap();
+    doc.select(&selector)
+        .next()
+        .and_then(|link| link.value().attr("href"))
+        .and_then(|href| href.strip_prefix("/vault/"))
+        .unwrap_or("")
+        .to_string()
+}
+
+/// Parse metadata rows from both legacy and current detail tables.
+fn parse_metadata_table(doc: &scraper::Html) -> HashMap<String, String> {
+    let row_sel = Selector::parse("tr").unwrap();
+    let flag_sel = Selector::parse("img.flag[title]").unwrap();
+    let date_sel = Selector::parse("#data-date").unwrap();
 
     doc.select(&row_sel)
         .filter_map(|row| {
-            let mut cells = row.select(&td_sel);
-            let key = cells
-                .next()?
+            let cells: Vec<ElementRef<'_>> = row
+                .children()
+                .filter_map(ElementRef::wrap)
+                .filter(|child| child.value().name() == "td")
+                .collect();
+            let first = cells.first()?;
+            let key = first
                 .text()
                 .collect::<String>()
                 .trim()
                 .trim_end_matches(':')
                 .to_string();
-            let val = cells.next()?.text().collect::<String>().trim().to_string();
-            Some((key, val))
+            if key.is_empty() {
+                return None;
+            }
+
+            let value = if key == "Verified" {
+                row.select(&date_sel).next().map_or_else(
+                    || {
+                        cells.last().map_or_else(String::new, |cell| {
+                            cell.text().collect::<String>().trim().to_string()
+                        })
+                    },
+                    |date| date.text().collect::<String>().trim().to_string(),
+                )
+            } else if key == "Region" {
+                let flags = row
+                    .select(&flag_sel)
+                    .filter_map(|flag| flag.value().attr("title"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if flags.is_empty() {
+                    cells.last()?.text().collect::<String>().trim().to_string()
+                } else {
+                    flags
+                }
+            } else {
+                cells
+                    .last()?
+                    .text()
+                    .collect::<String>()
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            };
+            Some((key, value))
         })
         .collect()
+}
+
+fn parse_metadata_ratings(meta: &HashMap<String, String>) -> Result<Ratings, VimmError> {
+    if let Some(combined) = meta.get("Ratings") {
+        return parse_ratings(combined);
+    }
+
+    let parse_score = |key: &str| {
+        meta.get(key)
+            .and_then(|value| value.split_whitespace().next())
+            .and_then(|value| value.parse::<f32>().ok())
+            .unwrap_or(0.0)
+    };
+    let overall_text = meta.get("Overall").map_or("", String::as_str);
+    let votes_re =
+        Regex::new(r"\((\d+)\s+votes?\)").map_err(|error| VimmError::Parse(error.to_string()))?;
+    let votes = votes_re
+        .captures(overall_text)
+        .and_then(|captures| captures.get(1))
+        .and_then(|value| value.as_str().parse::<u32>().ok())
+        .unwrap_or(0);
+
+    Ok(Ratings {
+        graphics: parse_score("Graphics"),
+        sound: parse_score("Sound"),
+        gameplay: parse_score("Gameplay"),
+        overall: parse_score("Overall"),
+        votes,
+    })
 }
 
 /// Parse ratings text like `"Graphics: 7.2, Sound: 8.3, Gameplay: 9.1, Overall: 8.8 (145 votes)"`.
@@ -397,7 +560,7 @@ mod tests {
         assert_eq!(m.formats[0].key, "nes");
         assert_eq!(m.formats[0].alt, 0);
         assert_eq!(m.formats[0].label, ".nes");
-        assert_eq!(m.formats[0].zipped_size_bytes, 21_874);
+        assert_eq!(m.formats[0].zipped_size_bytes, 21_874 * 1024);
         assert_eq!(detail.selected_version, Some("1.0".into()));
         assert_eq!(detail.selected_disc, Some("1".into()));
     }
@@ -427,17 +590,17 @@ mod tests {
         assert_eq!(m0.formats.len(), 3);
         assert_eq!(m0.formats[0].key, "ciso");
         assert_eq!(m0.formats[0].alt, 0);
-        assert_eq!(m0.formats[0].zipped_size_bytes, 350_000);
+        assert_eq!(m0.formats[0].zipped_size_bytes, 350_000 * 1024);
         assert_eq!(m0.formats[0].label, ".ciso");
         assert_eq!(m0.formats[0].description, "Compressed ISO");
         assert_eq!(m0.formats[1].key, "nkit.iso");
         assert_eq!(m0.formats[1].alt, 1);
-        assert_eq!(m0.formats[1].zipped_size_bytes, 320_000);
+        assert_eq!(m0.formats[1].zipped_size_bytes, 320_000 * 1024);
         assert_eq!(m0.formats[1].label, ".nkit.iso");
         assert_eq!(m0.formats[1].description, "NKit compressed ISO");
         assert_eq!(m0.formats[2].key, "rvz");
         assert_eq!(m0.formats[2].alt, 2);
-        assert_eq!(m0.formats[2].zipped_size_bytes, 310_000);
+        assert_eq!(m0.formats[2].zipped_size_bytes, 310_000 * 1024);
         assert_eq!(m0.formats[2].label, ".rvz");
         assert_eq!(m0.formats[2].description, "Dolphin compressed RVZ");
 
@@ -448,6 +611,51 @@ mod tests {
         assert_eq!(m1.formats.len(), 3);
         assert_eq!(detail.selected_version, Some("1.0".into()));
         assert_eq!(detail.selected_disc, Some("1".into()));
+    }
+
+    #[test]
+    fn parses_current_single_format_detail() {
+        let html = include_str!("../../../tests/fixtures/game_5625_current.html");
+        let detail = parse(html, 5625).expect("should parse current detail page");
+
+        assert_eq!(detail.title, "Pokemon: Emerald Version");
+        assert_eq!(detail.system, "GBA");
+        assert_eq!(detail.region, "USA, Europe");
+        assert_eq!(detail.players, 1);
+        assert_eq!(detail.year, 2005);
+        assert!(detail.publisher.is_empty());
+        assert!(detail.serial.is_empty());
+        assert!((detail.ratings.graphics - 8.62).abs() < 0.01);
+        assert!((detail.ratings.sound - 8.74).abs() < 0.01);
+        assert!((detail.ratings.gameplay - 8.93).abs() < 0.01);
+        assert!((detail.ratings.overall - 8.81).abs() < 0.01);
+        assert_eq!(detail.ratings.votes, 69);
+        assert_eq!(detail.verified_date, "2026-06-30");
+        assert_eq!(detail.media[0].verified_date, "2026-06-30");
+        assert_eq!(detail.media[0].formats[0].key, "GBA");
+        assert_eq!(detail.media[0].formats[0].zipped_size_bytes, 6632 * 1024);
+    }
+
+    #[test]
+    fn parses_current_multi_format_detail() {
+        let html = include_str!("../../../tests/fixtures/game_7478_current.html");
+        let detail = parse(html, 7478).expect("should parse current detail page");
+
+        assert_eq!(detail.system, "GameCube");
+        assert_eq!(detail.serial, "DOL-GZLE-USA");
+        let formats = &detail.media[0].formats;
+        assert_eq!(formats.len(), 3);
+        assert_eq!(formats[0].key, "ciso");
+        assert_eq!(formats[0].label, ".ciso");
+        assert_eq!(formats[0].alt, 0);
+        assert_eq!(formats[0].zipped_size_bytes, 730_817 * 1024);
+        assert_eq!(formats[1].key, "nkit.iso");
+        assert_eq!(formats[1].alt, 1);
+        assert_eq!(formats[1].zipped_size_bytes, 730_267 * 1024);
+        assert_eq!(formats[2].key, "rvz");
+        assert_eq!(formats[2].alt, 2);
+        assert_eq!(formats[2].zipped_size_bytes, 731_107 * 1024);
+        assert_eq!(formats[2].description, ".rvz files only work in Dolphin");
     }
 
     #[test]
